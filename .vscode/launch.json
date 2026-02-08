@@ -1,0 +1,40 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Backend: Debug",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "module": "uvicorn",
+      "args": ["deepagent.main:app", "--reload"],
+      "cwd": "${workspaceFolder}/backend",
+      "env": {
+        "DEEPAGENT_ENV": "dev",
+        "DEEPAGENT_DEBUG": "1",
+        "VITE_DEBUG": "true",
+        "PYTHONPATH": "${workspaceFolder}/backend"
+      },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Frontend: Dev",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "${workspaceFolder}/frontend",
+      "env": {
+        "VITE_DEBUG": "true",
+        "PYTHONPATH": "${workspaceFolder}/backend"
+      },
+      "console": "integratedTerminal"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "App: Backend + Frontend (Debug)",
+      "configurations": ["Backend: Debug", "Frontend: Dev"]
+    }
+  ]
+}
