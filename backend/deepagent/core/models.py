@@ -9,8 +9,8 @@ from langchain_community.chat_models import ChatZhipuAI
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
-from .config import Settings, resolve_path
-from .logger import get_logger
+from deepagent.common.config import Settings, resolve_path
+from deepagent.common.logger import get_logger
 
 
 @dataclass
@@ -20,12 +20,12 @@ class ModelSpec:
     temperature: float = 0.3
     api_key_env: str | None = None
     base_url: str | None = None
-
+    max_retries: int = 3
+    request_timeout: float = 60.0
 
 class ModelAdapter:
     def create(self, spec: ModelSpec, settings: Settings):
         raise NotImplementedError
-
 
 class ZhipuAdapter(ModelAdapter):
     def create(self, spec: ModelSpec, settings: Settings):
@@ -34,7 +34,15 @@ class ZhipuAdapter(ModelAdapter):
             if not spec.api_key_env
             else (os.getenv(spec.api_key_env) or settings.zhipu_api_key)
         )
-        return ChatZhipuAI(model=spec.model, api_key=api_key, temperature=spec.temperature)
+        # Note: ChatZhipuAI might not support max_retries/timeout directly in all versions
+        # We pass them if supported, otherwise rely on default behavior or http_client customization
+        return ChatZhipuAI(
+            model=spec.model, 
+            api_key=api_key, 
+            temperature=spec.temperature,
+            # max_retries=spec.max_retries, # Not supported in current version
+            # request_timeout=spec.request_timeout, # Not supported in current version
+        )
 
 class OpenAIAdapter(ModelAdapter):
     def create(self, spec: ModelSpec, settings: Settings):
@@ -45,6 +53,8 @@ class OpenAIAdapter(ModelAdapter):
             api_key=api_key_secret,
             base_url=spec.base_url,
             temperature=spec.temperature,
+            max_retries=spec.max_retries,
+            timeout=spec.request_timeout, # ChatOpenAI uses 'timeout'
         )
 
 
@@ -71,6 +81,8 @@ class ModelRouter:
             temperature=float(defaults.get("temperature", 0.3)),
             api_key_env=defaults.get("api_key_env"),
             base_url=defaults.get("base_url"),
+            max_retries=int(defaults.get("max_retries", 3)),
+            request_timeout=float(defaults.get("request_timeout", 60.0)),
         )
         specs: dict[str, ModelSpec] = {}
         for name, raw in (data.get("models", {}) or {}).items():
@@ -82,6 +94,8 @@ class ModelRouter:
                 temperature=float(raw.get("temperature", default_spec.temperature)),
                 api_key_env=raw.get("api_key_env", default_spec.api_key_env),
                 base_url=raw.get("base_url", default_spec.base_url),
+                max_retries=int(raw.get("max_retries", default_spec.max_retries)),
+                request_timeout=float(raw.get("request_timeout", default_spec.request_timeout)),
             )
         return cls(specs=specs, defaults=default_spec, settings=settings)
 

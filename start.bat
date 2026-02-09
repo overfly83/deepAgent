@@ -19,7 +19,7 @@ if "%MODE%"=="debug" (
   set DEEPAGENT_ENV=dev
   set DEEPAGENT_DEBUG=1
   set VITE_DEBUG=true
-  start "DeepAgent Backend" cmd /k "cd /d %ROOT%backend && set PYTHONPATH=%PYTHONPATH% && \"%PY%\" -m uvicorn deepagent.main:app --reload"
+  start "DeepAgent Backend" cmd /k "cd /d %ROOT%backend && set PYTHONPATH=%PYTHONPATH% && \"%PY%\" -m uvicorn deepagent.api.main:app --reload"
   start "DeepAgent Frontend" cmd /k "cd /d %ROOT%frontend && npm run dev"
   exit /b 0
 )
@@ -29,5 +29,5 @@ call npm run build
 cd /d %ROOT%backend
 set DEEPAGENT_ENV=prod
 set DEEPAGENT_DEBUG=0
-call start "DeepAgent Backend" cmd /k "cd /d %ROOT%backend && set PYTHONPATH=%PYTHONPATH% && \"%PY%\" -m uvicorn deepagent.main:app"
+call start "DeepAgent Backend" cmd /k "cd /d %ROOT%backend && set PYTHONPATH=%PYTHONPATH% && \"%PY%\" -m uvicorn deepagent.api.main:app"
 echo started

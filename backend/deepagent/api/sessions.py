@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from .config import resolve_path
+from deepagent.common.config import resolve_path
 
 
 class SessionStore:

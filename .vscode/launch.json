@@ -7,7 +7,7 @@
       "request": "launch",
       "python": "${workspaceFolder}/.venv/Scripts/python.exe",
       "module": "uvicorn",
-      "args": ["deepagent.main:app", "--reload"],
+      "args": ["deepagent.api.main:app", "--reload"],
       "cwd": "${workspaceFolder}/backend",
       "env": {
         "DEEPAGENT_ENV": "dev",

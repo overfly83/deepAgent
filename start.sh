@@ -19,7 +19,7 @@ if [[ "$MODE" == "debug" ]]; then
   export DEEPAGENT_ENV=dev
   export DEEPAGENT_DEBUG=1
   export VITE_DEBUG=true
-  (cd "$ROOT/backend" && "$PY" -m uvicorn deepagent.main:app --reload) &
+  (cd "$ROOT/backend" && "$PY" -m uvicorn deepagent.api.main:app --reload) &
   (cd "$ROOT/frontend" && npm run dev) &
   wait
   exit 0
@@ -30,5 +30,5 @@ npm run build
 cd "$ROOT/backend"
 export DEEPAGENT_ENV=prod
 export DEEPAGENT_DEBUG=0
-"$PY" -m uvicorn deepagent.main:app &
+"$PY" -m uvicorn deepagent.api.main:app &
 echo "started"

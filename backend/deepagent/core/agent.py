@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import random
 import re
@@ -10,32 +12,52 @@ from threading import get_ident
 from typing import Any, cast
 
 import httpx
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.runnables import RunnableConfig
-from pydantic import BaseModel as LCBaseModel
 from deepagents import create_deep_agent
 from deepagents.backends import FilesystemBackend
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
+from pydantic import BaseModel as LCBaseModel, validator
 
-from .config import get_settings, resolve_path
-from .integrations.mcp_client import MCPRegistry
-from .integrations.skills import SkillRegistry
-from .memory import (
+from deepagent.common.config import get_settings, resolve_path
+from deepagent.common.logger import get_logger
+from deepagent.common.schemas import TodoItem
+from deepagent.core.memory import (
     create_checkpointer,
     create_store,
     store_all,
-    store_search,
     store_put,
+    store_search,
 )
-from .schemas import TodoItem
-from .toolbox import ToolBox
-from .todos import TodoStore
-from .models import ModelRouter
+from deepagent.core.models import ModelRouter
+from deepagent.core.todos import TodoStore
+from deepagent.core.toolbox import ToolBox
+from deepagent.integrations.mcp_client import MCPRegistry
+from deepagent.integrations.skills import SkillRegistry
 
+logger = get_logger("deepagent.core.agent")
 
 class PlanOutput(LCBaseModel):
-    plan: list[str]
-    todos: list[TodoItem]
-    summary: str
+    plan: list[str] = []
+    todos: list[TodoItem] = []
+    summary: str = ""
+
+    @validator("plan", pre=True)
+    def parse_plan(cls, v):
+        if isinstance(v, str):
+            return [v]
+        return v
+        
+    @validator("todos", pre=True)
+    def parse_todos(cls, v):
+        if not isinstance(v, list):
+            return []
+        for item in v:
+            if isinstance(item, dict):
+                if "id" not in item:
+                    item["id"] = str(uuid.uuid4())
+                if "status" not in item:
+                    item["status"] = "pending"
+        return v
 
 
 class DeepAgent:
@@ -53,6 +75,9 @@ class DeepAgent:
         self.skill_registry = SkillRegistry.from_env(os.getenv("DEEPAGENT_SKILLS"))
         self.depth = depth
         self._agent_cache: dict[tuple[str, int], Any] = {}
+        
+        # Concurrency limit semaphore
+        self._concurrency_semaphore = asyncio.Semaphore(self.settings.max_concurrency)
 
         self.model_router = ModelRouter.from_config(
             self.settings.model_config_path, self.settings
@@ -150,6 +175,8 @@ class DeepAgent:
         if cache_key in self._agent_cache:
             return self._agent_cache[cache_key]
         checkpointer = create_checkpointer(thread_id)
+        
+        # Configure recursion limit
         agent = create_deep_agent(
             model=self.chat_model,
             tools=self.toolbox.tools(),
@@ -158,6 +185,9 @@ class DeepAgent:
             system_prompt=self._system_prompt(),
             backend=FilesystemBackend(root_dir=str(resolve_path(self.settings.workspace_root))),
         )
+        # Note: LangGraph agents are compiled. If we could pass recursion_limit here we would.
+        # But usually it's passed at invoke time via config.
+        
         self._agent_cache[cache_key] = agent
         return agent
 
@@ -201,26 +231,48 @@ class DeepAgent:
     def plan(self, message: str) -> PlanOutput:
         system = SystemMessage(
             content=(
-                "Create a concise plan and todos. Todos should be short and actionable."
+                "You are a planning assistant. Analyze the user's request and produce a structured plan.\n"
+                "Return a JSON object with:\n"
+                "- 'plan': A list of high-level steps (strings). If only one step, return a list with one string.\n"
+                "- 'todos': A list of actionable items, each with a 'title' and a unique 'id' (string).\n"
+                "- 'summary': A brief summary of the intent.\n"
             )
         )
         try:
+            logger.debug(f"Generating plan for message: {message}")
             result = self.planner.invoke([system, HumanMessage(content=message)])
+            logger.debug(f"Plan generation result: {result}")
+            
             if result is None:
+                logger.warn("Plan generation returned None")
                 return PlanOutput(plan=[], todos=[], summary="")
-            if isinstance(result, PlanOutput):
-                return result
             if isinstance(result, dict):
-                return PlanOutput(**cast(dict[str, Any], result))
+                result = PlanOutput(**cast(dict[str, Any], result))
+            
+            if isinstance(result, PlanOutput):
+                # Fallback: if todos are empty but plan exists, generate todos from plan
+                if result.plan and not result.todos:
+                    logger.info("Todos missing from LLM output, generating from plan")
+                    result.todos = [
+                        TodoItem(id=str(uuid.uuid4()), title=step, status="pending") 
+                        for step in result.plan
+                    ]
+                return result
+
+            logger.warn(f"Plan generation returned unexpected type: {type(result)}")
             return PlanOutput(plan=[], todos=[], summary="")
-        except Exception:
+        except Exception as e:
+            logger.error(f"Plan generation failed: {e}", exc_info=True)
             return PlanOutput(plan=[], todos=[], summary="")
 
-    def invoke(self, thread_id: str, user_id: str, message: str) -> dict[str, Any]:
+    def invoke(self, thread_id: str, user_id: str, message: str, background_tasks: Any = None) -> dict[str, Any]:
         plan = self.plan(message)
         if plan and plan.todos:
             self.todo_store.write(thread_id, plan.todos)
-        config: RunnableConfig = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
+        config: RunnableConfig = {
+            "configurable": {"thread_id": thread_id, "user_id": user_id},
+            "recursion_limit": self.settings.recursion_limit
+        }
         items = store_all(user_id)
         history: list[dict[str, str]] = []
         user_messages: list[str] = []
@@ -271,7 +323,10 @@ class DeepAgent:
                 "todos": [t.model_dump() for t in todos],
                 "memories": memories,
             }
-        history = history[-40:]
+        if self.settings.use_compressed_history:
+            history = history[-5:]
+        else:
+            history = history[-20:]
         relevant = store_search(self.store, user_id, query=message, limit=8)
         facts: list[str] = []
         for m in relevant:
@@ -296,16 +351,43 @@ class DeepAgent:
             for _, value in scored[:5]:
                 facts.append(str(value))
         messages: list[dict[str, str]] = []
-        messages.extend(history)
+        
+        # Build the system prompt content
+        system_content_parts = []
+        
+        # Add Relevant Memory section
         if facts:
-            messages.append({"role": "system", "content": "Relevant memory:\n" + "\n".join(facts)})
+            system_content_parts.append("Relevant memory:\n" + "\n".join(facts))
+            
+        # Add Recent History section
+        if history:
+            history_text_parts = ["Recent conversation history:"]
+            for msg in history:
+                role = msg.get("role", "unknown")
+                content = msg.get("content", "")
+                history_text_parts.append(f"{role}: {content}")
+            system_content_parts.append("\n".join(history_text_parts))
+            
+        # Add default system prompt if needed (though the agent likely has its own base prompt, 
+        # injecting context here ensures it's available)
+        
+        if system_content_parts:
+            messages.append({"role": "system", "content": "\n\n".join(system_content_parts)})
+            
         messages.append({"role": "user", "content": message})
+        
+        logger.debug(f"LLM Input Messages: {json.dumps([m for m in messages], default=str)}")
+        
         result = self._call_with_retry(
             lambda: self._get_agent(thread_id).invoke(
                 {"messages": messages},
                 config=config,
             )
         )
+        
+        if result and result.get("messages"):
+             logger.debug(f"LLM Output: {result['messages'][-1].content}")
+
         if result is None:
             return {
                 "reply": "Rate limit reached. Please retry in a moment.",
@@ -336,7 +418,10 @@ class DeepAgent:
                 value = item.get("value") if isinstance(item, dict) else None
                 if isinstance(value, dict) and value.get("type") == "conversation":
                     updated_conversations.append(value)
-            self._maybe_store_summary(user_id, thread_id, updated_items, updated_conversations)
+            if background_tasks:
+                background_tasks.add_task(self._maybe_store_summary, user_id, thread_id, updated_items, updated_conversations)
+            else:
+                self._maybe_store_summary(user_id, thread_id, updated_items, updated_conversations)
         except Exception:
             pass
         todos = self.todo_store.get(thread_id)

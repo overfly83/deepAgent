@@ -1,22 +1,74 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
+import time
+import uuid
+
+from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from .agent import DeepAgent
-from .config import get_settings, resolve_path
-from .memory import store_put, store_search, create_store
-from .logger import get_logger
-from .schemas import ChatRequest, ChatResponse, MemoryWriteRequest, TodoWriteRequest
-from .sessions import SessionStore
-from .todos import TodoStore
-
+from deepagent.api.sessions import SessionStore
+from deepagent.common.config import get_settings, resolve_path
+from deepagent.common.logger import get_logger, request_id_ctx, source_ctx
+from deepagent.common.schemas import (
+    ChatRequest,
+    ChatResponse,
+    MemoryWriteRequest,
+    TodoWriteRequest,
+)
+from deepagent.core.agent import DeepAgent
+from deepagent.core.memory import create_store, store_put, store_search
+from deepagent.core.todos import TodoStore
 
 settings = get_settings()
 logger = get_logger("deepagent.api")
 app = FastAPI(title="DeepAgent")
+
+@app.middleware("http")
+async def log_middleware(request: Request, call_next):
+    req_id = str(uuid.uuid4())
+    request_id_ctx.set(req_id)
+    
+    # Set source context
+    token = source_ctx.set({
+        "module": "deepagent.api",
+        "endpoint": request.url.path,
+        "method": request.method
+    })
+    
+    start_time = time.time()
+    logger.info(f"Incoming Request: {request.method} {request.url.path} Query={request.query_params}")
+
+    # Capture and log request body for chat endpoint (useful for debugging user input)
+    if request.url.path == "/api/chat" and request.method == "POST":
+        try:
+            body_bytes = await request.body()
+            # Restore body for downstream processing
+            # FastAPI/Starlette consumes body stream, so we need to create a new receive function
+            async def new_receive():
+                return {"type": "http.request", "body": body_bytes}
+            request._receive = new_receive
+            
+            body_str = body_bytes.decode("utf-8")
+            logger.debug(f"Request Body: {body_str}")
+        except Exception:
+            logger.warn("Failed to read request body")
+    
+    try:
+        response = await call_next(request)
+        process_time = (time.time() - start_time) * 1000
+        
+        logger.info(
+            f"Outgoing Response: {response.status_code} "
+            f"Duration={process_time:.2f}ms"
+        )
+        return response
+    except Exception as e:
+        logger.error(f"Request Failed: {str(e)}", exc_info=True)
+        raise e
+    finally:
+        source_ctx.reset(token)
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,11 +91,11 @@ def health():
 
 
 @app.post("/api/chat", response_model=ChatResponse)
-def chat(req: ChatRequest):
+def chat(req: ChatRequest, background_tasks: BackgroundTasks):
     thread_id = req.thread_id or agent.new_thread_id()
     session_store.add(req.user_id, thread_id)
     logger.debug("chat request", extra={"thread_id": thread_id, "user_id": req.user_id})
-    result = agent.invoke(thread_id, req.user_id, req.message)
+    result = agent.invoke(thread_id, req.user_id, req.message, background_tasks=background_tasks)
     return ChatResponse(
         thread_id=thread_id,
         user_id=req.user_id,

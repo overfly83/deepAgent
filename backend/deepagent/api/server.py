@@ -4,7 +4,7 @@ import argparse
 
 import uvicorn
 
-from .config import get_settings
+from deepagent.common.config import get_settings
 
 
 def main() -> None:
@@ -15,7 +15,7 @@ def main() -> None:
     settings = get_settings()
     reload_enabled = args.mode == "debug"
     uvicorn.run(
-        "deepagent.main:app",
+        "deepagent.api.main:app",
         host=settings.host,
         port=settings.port,
         log_level=settings.log_level,

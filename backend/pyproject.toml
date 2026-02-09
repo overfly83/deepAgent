@@ -30,9 +30,14 @@ dev-dependencies = [
   "types-PyYAML>=6.0.12.20241230",
 ]
 
-[tool.ruff]
-line-length = 100
-target-version = "py310"
+[tool.ruff.lint]
+select = ["I", "E", "F"]
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["deepagent"]
+relative-imports-order = "closest-to-furthest"
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 
 [tool.mypy]
 python_version = "3.10"

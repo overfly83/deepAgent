@@ -1,21 +1,18 @@
 version: 1
 defaults:
-  provider: doubao
-  model: doubao-seed-1-8-251228
+  provider: zhipu
+  model: glm-4-flash
   temperature: 0.3
-  base_url: https://ark.cn-beijing.volces.com/api/v3
 models:
   chat:
-    provider: doubao
-    model: doubao-seed-1-8-251228
+    provider: zhipu
+    model: glm-4-flash
     temperature: 0.3
-    base_url: https://ark.cn-beijing.volces.com/api/v3
   plan:
-    provider: doubao
-    model: doubao-seed-1-8-251228
+    provider: zhipu
+    model: glm-4-flash
     temperature: 0.1
-    base_url: https://ark.cn-beijing.volces.com/api/v3
-    provider: doubao
-    model: doubao-seed-1-8-251228
+  summary:
+    provider: zhipu
+    model: glm-4-flash
     temperature: 0.2
-    base_url: https://ark.cn-beijing.volces.com/api/v3

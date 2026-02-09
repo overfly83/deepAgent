@@ -1,0 +1,14 @@
+defaults:
+  provider: zhipu
+  model: glm-4-flash
+  temperature: 0.3
+  max_retries: 3
+  request_timeout: 60.0
+
+models:
+  chat:
+    model: glm-4-flash
+  plan:
+    model: glm-4-flash
+  summary:
+    model: glm-4-flash

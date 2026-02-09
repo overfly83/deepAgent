@@ -19,8 +19,12 @@ class Settings(BaseModel):
     frontend_dist: str = "../frontend/dist"
     memory_db_path: str = "./data/checkpoints.db"
     memory_store_path: str = "./data/memory_store.json"
+    log_dir: str = "./logs"
+    recursion_limit: int = 25
+    max_concurrency: int = 5
     workspace_root: str = "../"
     model_config_path: str = "./config/models.yaml"
+    use_compressed_history: bool = False
     cors_allow_origins: list[str] = ["http://localhost:5173"]
 
 
@@ -38,8 +42,12 @@ def get_settings() -> Settings:
         frontend_dist=os.getenv("DEEPAGENT_FRONTEND_DIST", "../frontend/dist"),
         memory_db_path=os.getenv("DEEPAGENT_MEMORY_DB", "./data/checkpoints.db"),
         memory_store_path=os.getenv("DEEPAGENT_MEMORY_STORE", "./data/memory_store.json"),
+        log_dir=os.getenv("DEEPAGENT_LOG_DIR", "./logs"),
+        recursion_limit=int(os.getenv("DEEPAGENT_RECURSION_LIMIT", "25")),
+        max_concurrency=int(os.getenv("DEEPAGENT_MAX_CONCURRENCY", "5")),
         workspace_root=os.getenv("DEEPAGENT_WORKSPACE_ROOT", "../"),
         model_config_path=os.getenv("DEEPAGENT_MODEL_CONFIG", "./config/models.yaml"),
+        use_compressed_history=os.getenv("DEEPAGENT_USE_COMPRESSED_HISTORY", "0") in ("1", "true", "True"),
         cors_allow_origins=[
             origin.strip()
             for origin in os.getenv(

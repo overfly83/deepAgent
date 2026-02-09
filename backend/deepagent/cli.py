@@ -9,7 +9,6 @@ from typing import Any, cast
 
 from .config import resolve_path
 
-
 PID_PATH = resolve_path("./data/server.pid")
 
 

@@ -7,7 +7,8 @@ from typing import Any
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.store.memory import InMemoryStore
-from .config import get_settings, resolve_path
+
+from deepagent.common.config import get_settings, resolve_path
 
 
 def create_checkpointer(thread_id: str) -> SqliteSaver:

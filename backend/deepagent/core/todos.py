@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from typing import Dict, List
 
-from .config import resolve_path
-from .schemas import TodoItem
+from deepagent.common.config import resolve_path
+from deepagent.common.schemas import TodoItem
 
 
 class TodoStore:
