@@ -34,8 +34,10 @@ class ZhipuAdapter(ModelAdapter):
             if not spec.api_key_env
             else (os.getenv(spec.api_key_env) or settings.zhipu_api_key)
         )
-        # Note: ChatZhipuAI might not support max_retries/timeout directly in all versions
-        # We pass them if supported, otherwise rely on default behavior or http_client customization
+        if not api_key:
+             # Try to get from ZHIPUAI_API_KEY env var directly as fallback
+             api_key = os.getenv("ZHIPUAI_API_KEY")
+        
         return ChatZhipuAI(
             model=spec.model, 
             api_key=api_key, 

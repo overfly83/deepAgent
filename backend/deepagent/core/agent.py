@@ -16,7 +16,8 @@ from deepagents import create_deep_agent
 from deepagents.backends import FilesystemBackend
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
-from pydantic import BaseModel as LCBaseModel, validator
+from pydantic import BaseModel as LCBaseModel
+from pydantic import validator
 
 from deepagent.common.config import get_settings, resolve_path
 from deepagent.common.logger import get_logger

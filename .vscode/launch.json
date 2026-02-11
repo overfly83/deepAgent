@@ -15,6 +15,7 @@
         "VITE_DEBUG": "true",
         "PYTHONPATH": "${workspaceFolder}/backend"
       },
+      "envFile": "${workspaceFolder}/backend/.env",
       "console": "integratedTerminal"
     },
     {
