@@ -5,6 +5,7 @@ This document provides a comprehensive overview of the DeepAgent system architec
 ## 1. High-Level Architecture
 
 DeepAgent follows a layered architecture pattern, strictly separating API concerns from core business logic and external integrations.
+
 ```mermaid
 graph TD
     subgraph FrontendLayer ["Frontend Layer"]
@@ -183,3 +184,68 @@ sequenceDiagram
 *   **Model Agnostic**: The `ModelRouter` decouples the system from specific providers. Configuration allows swapping models (e.g., Zhipu vs OpenAI) for different pipeline steps (Chat vs Plan vs Summary) without code changes.
 *   **Protocol Oriented**: First-class support for the Model Context Protocol (MCP), enabling standard integration with external tools and data sources.
 *   **Recursive Agents**: The architecture supports "fractal" scaling, where an agent can spawn a child agent (with its own isolated context and tools) to solve a sub-problem, returning only the final result to the parent.
+
+## 5. Memory System Design
+
+The memory system is designed to provide both immediate context awareness and long-term continuity, preventing the "amnesia" typical of stateless LLM interactions.
+
+### Architecture
+
+```mermaid
+graph TD
+    subgraph Runtime_Context ["Runtime Context"]
+        Prompt[System Prompt]
+        History[Recent History (N turns)]
+        Facts[Retrieved Facts/Summaries]
+    end
+
+    subgraph Storage_Layer ["Storage Layer"]
+        JSON[(Long-Term Store\nJSON File)]
+        SQLite[(Graph State\nSQLite DB)]
+    end
+
+    subgraph Processes ["Processes"]
+        Search[Keyword/Semantic Search]
+        Summarizer[Auto-Summarizer]
+        Checkpointer[State Checkpointer]
+    end
+
+    Agent[DeepAgent] -->|Read| Search
+    Search -->|Query| JSON
+    Search -->|Inject| Facts
+    
+    Agent -->|Read| History
+    History -->|From| JSON
+    
+    Agent -->|Write Turn| JSON
+    Agent -->|Checkpoint| Checkpointer
+    Checkpointer -->|Persist| SQLite
+    
+    JSON -->|Trigger (every 8 turns)| Summarizer
+    Summarizer -->|Write Summary| JSON
+```
+
+### Key Components
+
+1.  **Long-Term Persistence (`MemoryStore`)**:
+    *   **Mechanism**: A file-backed key-value store (JSON) that persists across server restarts.
+    *   **Content**: Stores raw conversation turns (`type: conversation`) and high-level summaries (`type: summary`).
+    *   **Retrieval**: Uses a hybrid approach combining:
+        *   **Recency**: Always fetching the most recent N turns for immediate context.
+        *   **Relevance**: Keyword-based scoring to find related past interactions based on the current user query.
+
+2.  **Automatic Summarization**:
+    *   **Trigger**: Runs as a background task every 8 conversation turns.
+    *   **Function**: Compresses older dialogue into concise summaries, preserving key decisions and facts while freeing up context window space.
+    *   **Usage**: The latest summary is always injected into the system prompt.
+
+3.  **Graph State (`Checkpointer`)**:
+    *   **Technology**: `SqliteSaver` (SQLite).
+    *   **Purpose**: Persists the exact state of the LangGraph execution (nodes, variables, tool outputs). This allows the agent to pause, resume, or retry complex workflows seamlessly.
+
+4.  **Context Assembly**:
+    Before generating a response, the agent constructs a dynamic prompt containing:
+    *   **System Instructions**: Core identity and rules.
+    *   **Relevant Memories**: Facts retrieved via search.
+    *   **Global Summary**: The latest condensed view of the conversation.
+    *   **Recent History**: Raw dialogue from the last few turns.

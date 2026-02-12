@@ -17,7 +17,7 @@ from deepagents.backends import FilesystemBackend
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel as LCBaseModel
-from pydantic import validator
+from pydantic import field_validator
 
 from deepagent.common.config import get_settings, resolve_path
 from deepagent.common.logger import get_logger
@@ -42,13 +42,13 @@ class PlanOutput(LCBaseModel):
     todos: list[TodoItem] = []
     summary: str = ""
 
-    @validator("plan", pre=True)
+    @field_validator("plan", pre=True)
     def parse_plan(cls, v):
         if isinstance(v, str):
             return [v]
         return v
         
-    @validator("todos", pre=True)
+    @field_validator("todos", pre=True)
     def parse_todos(cls, v):
         if not isinstance(v, list):
             return []
