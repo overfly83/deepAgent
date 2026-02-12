@@ -1,113 +1,106 @@
 # DeepAgent
 
-DeepAgent is a LangChain DeepAgents-style system built on LangGraph. It ships a Python backend with planning, task decomposition, tool execution, subagent spawning, and long-term memory, plus a React-based UI. It supports MCP and custom skill endpoints via configurable registries.
+DeepAgent is an enterprise-grade, autonomous AI system built on LangGraph. It features a modular Python backend capable of systematic planning, task decomposition, recursive sub-agent spawning, and persistent long-term memory. It comes with a modern React-based frontend and full support for the Model Context Protocol (MCP).
 
-## Highlights
+## 🚀 Key Features
 
-- Planning and task decomposition with a `write_todos` tool
-- Context management tools for filesystem access
-- Subagent spawning for isolated deep work
-- Persistent memory across sessions
-- MCP and skill protocol integrations
-- Single-port production serve or split deployments
+- **Autonomous Planning**: Decomposes complex user requests into actionable Todo lists using a dedicated planner model.
+- **Persistent Memory**: Remembers user preferences and facts across sessions using vector search and structured storage.
+- **Recursive Sub-Agents**: Spawns isolated child agents to handle complex sub-tasks without cluttering the main context.
+- **Tool Ecosystem**: Native support for Model Context Protocol (MCP) servers and custom Skill endpoints.
+- **Production Ready**: Layered architecture, strictly typed (mypy), and modular design.
 
-## Requirements
+## 🏗️ Architecture
 
-- Python 3.10+
-- Node.js 18+
+The system is built on a clean, layered architecture separating API concerns from core business logic.
 
-## One-click install
+- **Core Logic**: `backend/deepagent/core/` (Agent, Memory, Models)
+- **API Layer**: `backend/deepagent/api/` (FastAPI endpoints)
+- **Integrations**: `backend/deepagent/integrations/` (MCP, Skills)
 
-- Windows: run `install.bat`
-- Linux/macOS: run `./install.sh`
+👉 **[View Detailed Architecture & Design Diagrams](ARCHITECTURE.md)**
 
-These scripts install backend and frontend dependencies and are resilient to future dependency changes.
+## 🛠️ Prerequisites
 
-## Configuration
+- **Python**: 3.10 or higher
+- **Node.js**: 18 or higher
+- **API Key**: A Zhipu AI API key (or OpenAI compatible key)
 
-Copy `backend/.env.example` to `backend/.env` and set your Zhipu key.
+## ⚡ Quick Start
 
-Required:
+### 1. Installation
 
-- `ZHIPU_API_KEY`
-
-Optional:
-
-- `DEEPAGENT_ENV`: `dev` or `prod`
-- `DEEPAGENT_HOST`, `DEEPAGENT_PORT`
-- `DEEPAGENT_FRONTEND_DEV_SERVER`
-- `DEEPAGENT_MEMORY_DB`
-- `DEEPAGENT_MEMORY_STORE`
-- `DEEPAGENT_MCP_SERVERS`: JSON array of `{ "name": "...", "endpoint": "..." }`
-- `DEEPAGENT_SKILLS`: JSON array of `{ "name": "...", "endpoint": "..." }`
-
-## Run (dev)
-
-Backend:
-
-```
-cd backend
-python -m deepagent.cli start --mode debug
+**Windows**:
+```cmd
+install.bat
 ```
 
-Frontend:
-
-```
-cd frontend
-npm run dev
+**Linux/macOS**:
+```bash
+./install.sh
 ```
 
-Open http://localhost:5173
- 
-Debug flags:
-- VSCode compound launch sets DEEPAGENT_DEBUG=1 and VITE_DEBUG=true
-- You can also run `./start.sh --debug` or `start.bat --debug`
+### 2. Configuration
 
-## Run (production, single port)
+Create a `.env` file in the `backend/` directory:
 
-```
-cd frontend
-npm run build
-cd ../backend
-python -m deepagent.cli start --mode prod --detach
+```ini
+ZHIPU_API_KEY=your_key_here
+DEEPAGENT_ENV=dev
+DEEPAGENT_LOG_LEVEL=info
 ```
 
-Open http://localhost:8000
- 
-One-click start:
+### 3. Run Application
+
+**Windows**:
+```cmd
+start.bat --debug
 ```
+
+**Linux/macOS**:
+```bash
+./start.sh --debug
+```
+
+This will launch:
+- Backend API at `http://localhost:8000`
+- Frontend UI at `http://localhost:5173`
+
+## 📦 Production Build
+
+To run in production mode (single optimized artifact):
+
+```bash
+# Windows
+start.bat
+
+# Linux/Mac
 ./start.sh
 ```
-or on Windows
+
+## 🔌 API Endpoints
+
+- `POST /api/chat`: Main conversation endpoint (supports planning & execution).
+- `GET /api/todos`: Retrieve current task list.
+- `GET /api/memory`: Access long-term memory store.
+- `GET /api/sessions`: List active conversation threads.
+
+## 🧩 Configuration & Models
+
+DeepAgent uses a `config/models.yaml` to define model behaviors. You can swap providers (Zhipu, OpenAI, etc.) for different steps of the cognitive pipeline:
+
+```yaml
+defaults:
+  provider: zhipu
+  model: glm-4-flash
+
+models:
+  plan:
+    temperature: 0.1
+  summary:
+    model: glm-4-flash
 ```
-start.bat
-```
 
-Stop server:
+## 📄 License
 
-```
-cd backend
-python -m deepagent.cli stop
-```
-
-## Architecture
-
-- `backend/deepagent/agent.py`: DeepAgents orchestration and planning
-- `backend/deepagent/toolbox.py`: tools for todos, filesystem, memory, MCP, skills, subagents
-- `backend/deepagent/memory.py`: persistent memory (SQLite checkpointer + JSON store)
-- `backend/deepagent/main.py`: FastAPI API and frontend mounting
-- `frontend/`: Vite + React + MUI UI
- 
-Logging:
-- Backend logger respects `DEEPAGENT_DEBUG` and emits detailed traces in debug
-- Frontend logger respects `VITE_DEBUG` and emits debug-level diagnostics
-
-## API
-
-- `POST /api/chat`: main conversation endpoint
-- `GET /api/todos`, `POST /api/todos`: read/write todos
-- `GET /api/memory`, `POST /api/memory`: read/write long-term memory
-
-## Notes
-
-No paid cloud services are required. The default model is `glm-4-flash` via Zhipu.
+MIT

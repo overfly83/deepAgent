@@ -7,7 +7,7 @@ import subprocess
 import sys
 from typing import Any, cast
 
-from .config import resolve_path
+from deepagent.common.config import resolve_path
 
 PID_PATH = resolve_path("./data/server.pid")
 
@@ -25,7 +25,8 @@ def _read_pid() -> int | None:
 
 
 def start(mode: str, detach: bool) -> None:
-    cmd = [sys.executable, "-m", "deepagent.server", "--mode", mode]
+    # Points to the new entry point
+    cmd = [sys.executable, "-m", "deepagent.api.main", "--mode", mode]
     if not detach:
         subprocess.run(cmd, check=False)
         return
