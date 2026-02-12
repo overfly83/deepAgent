@@ -5,7 +5,7 @@ This document provides a comprehensive overview of the DeepAgent system architec
 ## 1. High-Level Architecture
 
 DeepAgent follows a layered architecture pattern, strictly separating API concerns from core business logic and external integrations.
-
+```
 graph TD
     subgraph FrontendLayer ["Frontend Layer"]
         UI["React + Vite UI"]
@@ -43,6 +43,7 @@ graph TD
     Tools --> MCP
     Tools --> Skills
     Tools --> FS
+```
 
 ## 2. Core Module Design
 
@@ -56,7 +57,7 @@ The `core` module is the heart of the application, enforcing the Single Responsi
 - `deepagent.core.toolbox`: Tool registration, MCP client integration, and subagent delegation.
 
 ### Class Relationship Diagram
-
+```
 classDiagram
     %% 核心类定义（保留所有方法/属性，仅修正语法）
     class DeepAgent {
@@ -97,6 +98,7 @@ classDiagram
     DeepAgent *-- TodoStore : tracks\ tasks      // 转义空格
     ToolBox o-- MCPRegistry : integrates
     ToolBox o-- SkillRegistry : integrates
+```
 
 ## 3. Data Flow & Execution Pipeline
 
