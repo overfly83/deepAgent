@@ -104,6 +104,62 @@ classDiagram
 
 When a user sends a message, DeepAgent executes a structured cognitive cycle:
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant User
+    participant API as API Layer
+    participant Agent as DeepAgent Core
+    participant Plan as Planner
+    participant Mem as Memory/Todos
+    participant LLM as Model Router
+    participant Tools as ToolBox
+
+    User->>API: POST /api/chat (message)
+    API->>Agent: invoke(thread_id, message)
+    
+    rect rgb(240, 248, 255)
+        Note over Agent, Mem: 1. Context Construction
+        Agent->>Mem: Load History & Todos
+        Agent->>Mem: Search Relevant Memories
+        Mem-->>Agent: Context Data
+    end
+
+    rect rgb(255, 250, 240)
+        Note over Agent, Plan: 2. Planning
+        Agent->>Plan: Generate/Update Plan
+        Plan->>LLM: Call Planner Model
+        LLM-->>Plan: Structured Plan
+        Plan-->>Agent: Updated Plan & Todos
+    end
+
+    rect rgb(240, 255, 240)
+        Note over Agent, Tools: 3. Execution (LangGraph Loop)
+        loop Until Goal Met
+            Agent->>LLM: Call Chat Model (Reasoning)
+            LLM-->>Agent: Tool Call / Final Answer
+            
+            opt Tool Execution
+                Agent->>Tools: Execute Tool (MCP/Skill)
+                Tools-->>Agent: Tool Result
+            end
+        end
+    end
+
+    rect rgb(255, 240, 245)
+        Note over Agent, Mem: 4. Reflection & Storage
+        Agent->>Mem: Update Todo Status
+        Agent->>Mem: Store New Facts (Memory)
+        opt Summarization
+            Agent->>LLM: Summarize Conversation
+            LLM-->>Agent: Summary
+        end
+    end
+
+    Agent-->>API: ChatResponse (answer, plan, memories)
+    API-->>User: JSON Response
+```
+
 1.  **Context Construction**:
     *   Retrieves recent conversation history.
     *   Searches long-term memory for relevant facts.
