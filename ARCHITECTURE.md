@@ -5,7 +5,7 @@ This document provides a comprehensive overview of the DeepAgent system architec
 ## 1. High-Level Architecture
 
 DeepAgent follows a layered architecture pattern, strictly separating API concerns from core business logic and external integrations.
-```
+```mermaid
 graph TD
     subgraph FrontendLayer ["Frontend Layer"]
         UI["React + Vite UI"]
@@ -57,7 +57,7 @@ The `core` module is the heart of the application, enforcing the Single Responsi
 - `deepagent.core.toolbox`: Tool registration, MCP client integration, and subagent delegation.
 
 ### Class Relationship Diagram
-```
+```mermaid
 classDiagram
     %% 核心类定义（保留所有方法/属性，仅修正语法）
     class DeepAgent {
