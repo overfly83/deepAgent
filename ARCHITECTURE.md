@@ -69,7 +69,7 @@ classDiagram
 
     class ModelRouter {
         +get_model(step)
-        +specs: object  // 替换Dict为Mermaid兼容的通用类型
+        +specs: object
     }
 
     class ToolBox {
@@ -84,7 +84,7 @@ classDiagram
     }
 
     class TodoStore {
-        +get(threadId)  // 下划线改驼峰，提升兼容性
+        +get(threadId)
         +write(threadId, items)
     }
 
@@ -95,8 +95,8 @@ classDiagram
     %% 规范连接语法（统一空格+转义空格说明）
     DeepAgent *-- ModelRouter : uses
     DeepAgent *-- ToolBox : uses
-    DeepAgent *-- MemoryStore : persists\ state  // 转义空格
-    DeepAgent *-- TodoStore : tracks\ tasks      // 转义空格
+    DeepAgent *-- MemoryStore : persists\ state
+    DeepAgent *-- TodoStore : tracks\ tasks 
     ToolBox o-- MCPRegistry : integrates
     ToolBox o-- SkillRegistry : integrates
 ```
@@ -132,6 +132,7 @@ sequenceDiagram
         Plan->>LLM: Call Planner Model
         LLM-->>Plan: Structured Plan
         Plan-->>Agent: Updated Plan & Todos
+        Agent->>Mem: Persist Initial Todos
     end
 
     rect rgb(240, 255, 240)
@@ -141,7 +142,7 @@ sequenceDiagram
             LLM-->>Agent: Tool Call / Final Answer
             
             opt Tool Execution
-                Agent->>Tools: Execute Tool (MCP/Skill)
+                Agent->>Tools: Execute Tool (MCP/Skill/FS)
                 Tools-->>Agent: Tool Result
             end
         end
@@ -149,7 +150,6 @@ sequenceDiagram
 
     rect rgb(255, 240, 245)
         Note over Agent, Mem: 4. Reflection & Storage
-        Agent->>Mem: Update Todo Status
         Agent->>Mem: Store New Facts (Memory)
         opt Summarization
             Agent->>LLM: Summarize Conversation
