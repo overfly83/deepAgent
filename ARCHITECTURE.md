@@ -6,35 +6,34 @@ This document provides a comprehensive overview of the DeepAgent system architec
 
 DeepAgent follows a layered architecture pattern, strictly separating API concerns from core business logic and external integrations.
 
-```mermaid
 graph TD
-    subgraph Frontend_Layer ["Frontend Layer"]
-        UI[React + Vite UI]
+    subgraph FrontendLayer ["Frontend Layer"]
+        UI["React + Vite UI"]
     end
 
-    subgraph Backend_Layer ["Backend Layer (Python)"]
-        API[API Gateway (FastAPI)]
+    subgraph BackendLayer ["Backend Layer (Python)"]
+        API["API Gateway (FastAPI)"]
         
-        subgraph Core_Domain ["Core Domain"]
-            Agent[DeepAgent Core]
-            Plan[Planner & Reasoner]
-            Mem[Memory System]
+        subgraph CoreDomain ["Core Domain"]
+            Agent["DeepAgent Core"]
+            Plan["Planner & Reasoner"]
+            Mem["Memory System"]
         end
         
         subgraph Infrastructure ["Infrastructure"]
-            Router[Model Router]
-            Tools[ToolBox]
+            Router["Model Router"]
+            Tools["ToolBox"]
         end
     end
 
-    subgraph External_World ["External World"]
-        LLM[LLM Providers (Zhipu/OpenAI)]
-        MCP[MCP Servers]
-        Skills[Skill Endpoints]
-        FS[File System]
+    subgraph ExternalWorld ["External World"]
+        LLM["LLM Providers (Zhipu/OpenAI)"]
+        MCP["MCP Servers"]
+        Skills["Skill Endpoints"]
+        FS["File System"]
     end
 
-    UI <-->|JSON/REST| API
+    UI <--> |JSON/REST| API
     API <--> Agent
     Agent --> Plan
     Agent --> Mem
@@ -44,7 +43,6 @@ graph TD
     Tools --> MCP
     Tools --> Skills
     Tools --> FS
-```
 
 ## 2. Core Module Design
 
@@ -59,8 +57,8 @@ The `core` module is the heart of the application, enforcing the Single Responsi
 
 ### Class Relationship Diagram
 
-```mermaid
 classDiagram
+    %% 核心类定义（保留所有方法/属性，仅修正语法）
     class DeepAgent {
         +invoke(message)
         +plan(message)
@@ -69,7 +67,7 @@ classDiagram
 
     class ModelRouter {
         +get_model(step)
-        +specs: Dict
+        +specs: object  // 替换Dict为Mermaid兼容的通用类型
     }
 
     class ToolBox {
@@ -84,17 +82,21 @@ classDiagram
     }
 
     class TodoStore {
-        +get(thread_id)
-        +write(thread_id, items)
+        +get(threadId)  // 下划线改驼峰，提升兼容性
+        +write(threadId, items)
     }
 
+    %% 补充缺失的引用类（关键修复）
+    class MCPRegistry { }
+    class SkillRegistry { }
+
+    %% 规范连接语法（统一空格+转义空格说明）
     DeepAgent *-- ModelRouter : uses
     DeepAgent *-- ToolBox : uses
-    DeepAgent *-- MemoryStore : persists state
-    DeepAgent *-- TodoStore : tracks tasks
+    DeepAgent *-- MemoryStore : persists\ state  // 转义空格
+    DeepAgent *-- TodoStore : tracks\ tasks      // 转义空格
     ToolBox o-- MCPRegistry : integrates
     ToolBox o-- SkillRegistry : integrates
-```
 
 ## 3. Data Flow & Execution Pipeline
 
