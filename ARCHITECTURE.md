@@ -8,26 +8,26 @@ DeepAgent follows a layered architecture pattern, strictly separating API concer
 
 ```mermaid
 graph TD
-    subgraph "Frontend Layer"
+    subgraph Frontend_Layer ["Frontend Layer"]
         UI[React + Vite UI]
     end
 
-    subgraph "Backend Layer (Python)"
+    subgraph Backend_Layer ["Backend Layer (Python)"]
         API[API Gateway (FastAPI)]
         
-        subgraph "Core Domain"
+        subgraph Core_Domain ["Core Domain"]
             Agent[DeepAgent Core]
             Plan[Planner & Reasoner]
             Mem[Memory System]
         end
         
-        subgraph "Infrastructure"
+        subgraph Infrastructure ["Infrastructure"]
             Router[Model Router]
             Tools[ToolBox]
         end
     end
 
-    subgraph "External World"
+    subgraph External_World ["External World"]
         LLM[LLM Providers (Zhipu/OpenAI)]
         MCP[MCP Servers]
         Skills[Skill Endpoints]
