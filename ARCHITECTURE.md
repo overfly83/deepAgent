@@ -193,36 +193,52 @@ The memory system is designed to provide both immediate context awareness and lo
 
 ```mermaid
 graph TD
-    subgraph Runtime_Context ["Runtime Context"]
+    subgraph RuntimeContext ["Runtime Context"]
         Prompt[System Prompt]
-        History[Recent History (N turns)]
-        Facts[Retrieved Facts/Summaries]
+        History[Recent History N turns]
+        Facts[Retrieved Facts Summaries]
     end
 
-    subgraph Storage_Layer ["Storage Layer"]
-        JSON[(Long-Term Store\nJSON File)]
-        SQLite[(Graph State\nSQLite DB)]
+    subgraph StorageLayer ["Storage Layer"]
+        JSON[(Long-Term Store JSON File)]
+        SQLite[(Graph State SQLite DB)]
     end
 
     subgraph Processes ["Processes"]
-        Search[Keyword/Semantic Search]
+        Search[Keyword Semantic Search]
         Summarizer[Auto-Summarizer]
         Checkpointer[State Checkpointer]
     end
 
-    Agent[DeepAgent] -->|Read| Search
-    Search -->|Query| JSON
-    Search -->|Inject| Facts
+    Agent[DeepAgent] --> Read1 --> Search
+    Search --> Query --> JSON
+    Search --> Inject --> Facts
     
-    Agent -->|Read| History
-    History -->|From| JSON
+    Agent --> Read2 --> History
+    History --> From --> JSON
     
-    Agent -->|Write Turn| JSON
-    Agent -->|Checkpoint| Checkpointer
-    Checkpointer -->|Persist| SQLite
+    Agent --> Write --> JSON
+    Agent --> Checkpoint --> Checkpointer
+    Checkpointer --> Persist --> SQLite
     
-    JSON -->|Trigger (every 8 turns)| Summarizer
-    Summarizer -->|Write Summary| JSON
+    JSON --> Trigger --> Summarizer
+    Summarizer --> WriteSum --> JSON
+
+    %% Define invisible helper nodes for labels (avoids long connector text)
+    Read1[Read]
+    Read2[Read]
+    Query[Query]
+    Inject[Inject]
+    From[From]
+    Write[Write Turn]
+    Checkpoint[Checkpoint]
+    Persist[Persist]
+    Trigger[Trigger every 8 turns]
+    WriteSum[Write Summary]
+    
+    %% Style helper nodes to be invisible (optional, for clean look)
+    classDef invisible fill:none,stroke:none,font-size:0;
+    class Read1,Read2,Query,Inject,From,Write,Checkpoint,Persist,Trigger,WriteSum invisible;
 ```
 
 ### Key Components
