@@ -1,32 +1,86 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Box,
   Button,
-  MenuItem,
+  Chip,
+  Container,
+  Divider,
+  Grid,
+  IconButton,
+  List,
+  ListItem,
+  ListItemText,
   Paper,
-  Select,
   Stack,
   TextField,
   Typography,
+  useTheme,
 } from "@mui/material";
-import { chat, getSessions } from "../api";
+import SendIcon from "@mui/icons-material/Send";
+import SmartToyIcon from "@mui/icons-material/SmartToy";
+import PersonIcon from "@mui/icons-material/Person";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
+import PlayCircleFilledWhiteIcon from "@mui/icons-material/PlayCircleFilledWhite";
+import { chatStream, getSessions } from "../api";
 import { useDeepAgent } from "../context";
+
+// Modern styled components (using sx for simplicity)
+const ChatBubble = ({ role, content }: { role: "user" | "agent"; content: string }) => {
+  const theme = useTheme();
+  const isUser = role === "user";
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        justifyContent: isUser ? "flex-end" : "flex-start",
+        mb: 2,
+      }}
+    >
+      {!isUser && (
+        <SmartToyIcon sx={{ mr: 1, mt: 1, color: theme.palette.primary.main }} />
+      )}
+      <Paper
+        elevation={isUser ? 0 : 1}
+        sx={{
+          p: 2,
+          maxWidth: "80%",
+          borderRadius: 2,
+          bgcolor: isUser ? theme.palette.primary.main : theme.palette.background.paper,
+          color: isUser ? "#fff" : theme.palette.text.primary,
+          borderTopLeftRadius: !isUser ? 0 : 2,
+          borderTopRightRadius: isUser ? 0 : 2,
+        }}
+      >
+        <Typography variant="body1" sx={{ whiteSpace: "pre-wrap" }}>
+          {content}
+        </Typography>
+      </Paper>
+      {isUser && (
+        <PersonIcon sx={{ ml: 1, mt: 1, color: theme.palette.grey[500] }} />
+      )}
+    </Box>
+  );
+};
 
 export default function Chat() {
   const {
     threadId,
     userId,
     setThreadId,
-    setUserId,
     sessions,
     setSessions,
-    createSession,
+    plan,
+    todos,
+    memories,
     setPlan,
     setTodos,
-    setMemories,
   } = useDeepAgent();
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<string[]>([]);
+  const [messages, setMessages] = useState<{ role: "user" | "agent"; content: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [statusText, setStatusText] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     getSessions(userId)
@@ -41,76 +95,296 @@ export default function Chat() {
       .catch(() => undefined);
   }, [userId]);
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   async function send() {
-    if (!input.trim()) return;
-    setMessages((m) => [...m, `You: ${input}`]);
+    if (!input.trim() || loading) return;
+
+    setMessages((m) => [...m, { role: "user", content: input }]);
+    const currentInput = input;
+    setInput("");
+    setLoading(true);
+    setStatusText("Initializing...");
+
+    let currentReply = "";
+
     try {
-      const res = await chat(threadId, userId, input);
-      setMessages((m) => [...m, `Agent: ${res.reply}`]);
-      if (res.thread_id && res.thread_id !== threadId) {
-        setThreadId(res.thread_id);
-        if (!sessions.includes(res.thread_id)) {
-          setSessions([res.thread_id, ...sessions]);
+      await chatStream(threadId, userId, currentInput, (event) => {
+        switch (event.type) {
+          case "token":
+            currentReply += event.content;
+            setMessages((prev) => {
+              const last = prev[prev.length - 1];
+              if (last && last.role === "agent") {
+                const newArr = [...prev];
+                newArr[newArr.length - 1] = { ...last, content: currentReply };
+                return newArr;
+              } else {
+                return [...prev, { role: "agent", content: currentReply }];
+              }
+            });
+            break;
+
+          case "plan":
+            setPlan(event.plan);
+            break;
+
+          case "todos":
+            console.log("Received todos update:", event.todos);
+            setTodos(event.todos);
+            break;
+
+          case "status":
+            setStatusText(event.content);
+            break;
+
+          case "tool_start":
+            setStatusText(`Running tool: ${event.tool}...`);
+            break;
+
+          case "tool_end":
+            setStatusText(`Finished tool: ${event.tool}`);
+            break;
         }
-      }
-      setPlan(res.plan);
-      setTodos(res.todos);
-      setMemories(res.memories);
-      setInput("");
+      });
     } catch (e: any) {
-      setMessages((m) => [...m, `Error: ${e.message}`]);
+      setMessages((m) => [...m, { role: "agent", content: `Error: ${e.message}` }]);
+    } finally {
+      setLoading(false);
+      setStatusText("");
     }
   }
 
   return (
-    <Stack spacing={2}>
-      <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-        <Select
-          size="small"
-          value={threadId}
-          onChange={(e) => setThreadId(String(e.target.value))}
-          fullWidth
-        >
-          {sessions.map((id) => (
-            <MenuItem key={id} value={id}>
-              {id}
-            </MenuItem>
-          ))}
-        </Select>
-        <Button variant="outlined" onClick={() => createSession()}>
-          New Session
-        </Button>
-        <TextField
-          size="small"
-          label="User ID"
-          value={userId}
-          onChange={(e) => setUserId(e.target.value)}
-          fullWidth
-        />
-      </Stack>
-      <Paper variant="outlined" sx={{ p: 2, minHeight: 300 }}>
-        <Stack spacing={1}>
-          {messages.map((m, i) => (
-            <Typography key={i} variant="body2">
-              {m}
-            </Typography>
-          ))}
-        </Stack>
-      </Paper>
-      <Box display="flex" gap={1}>
-        <TextField
-          fullWidth
-          placeholder="Ask DeepAgent..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") send();
+    <Grid container spacing={2} sx={{ height: "calc(100vh - 100px)" }}>
+      {/* Left Panel: Mission Control */}
+      <Grid item xs={12} md={4} sx={{ height: "100%", display: "flex", flexDirection: "column", gap: 2 }}>
+        {/* Plan Section - 20% */}
+        <Paper
+          variant="outlined"
+          sx={{
+            flex: 2,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+            borderRadius: 2,
+            borderColor: "primary.light",
           }}
-        />
-        <Button variant="contained" onClick={send}>
-          Send
-        </Button>
-      </Box>
-    </Stack>
+        >
+          <Box sx={{ p: 2, bgcolor: "grey.50", borderBottom: 1, borderColor: "divider" }}>
+            <Typography variant="subtitle1" fontWeight="bold" color="primary">
+              📋 Execution Plan
+            </Typography>
+          </Box>
+          <Box sx={{ p: 2, overflowY: "auto", flex: 1 }}>
+            {plan.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                No active plan. Send a request to generate one.
+              </Typography>
+            ) : (
+              <List dense>
+                {plan.map((step, i) => (
+                  <ListItem key={i} disablePadding sx={{ mb: 1 }}>
+                    <Typography variant="body2">
+                      <strong>{i + 1}.</strong> {step}
+                    </Typography>
+                  </ListItem>
+                ))}
+              </List>
+            )}
+          </Box>
+        </Paper>
+
+        {/* Todos Section - 30% */}
+        <Paper
+          variant="outlined"
+          sx={{
+            flex: 3,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+            borderRadius: 2,
+            borderColor: "secondary.light",
+          }}
+        >
+          <Box sx={{ p: 2, bgcolor: "grey.50", borderBottom: 1, borderColor: "divider" }}>
+            <Typography variant="subtitle1" fontWeight="bold" color="secondary">
+              ✅ Tasks & Progress
+            </Typography>
+          </Box>
+          <Box sx={{ p: 2, overflowY: "auto", flex: 1 }}>
+            {todos.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                No tasks pending.
+              </Typography>
+            ) : (
+              <List dense>
+                {todos.map((todo) => {
+                   let icon = <RadioButtonUncheckedIcon fontSize="small" color="disabled" />;
+                   if (todo.status === "in_progress") icon = <PlayCircleFilledWhiteIcon fontSize="small" color="info" />;
+                   if (todo.status === "completed" || todo.status === "done") icon = <CheckCircleIcon fontSize="small" color="success" />;
+                   
+                   return (
+                    <ListItem key={todo.id} sx={{ borderBottom: "1px dashed #eee" }}>
+                      <Box sx={{ mr: 1, display: "flex", alignItems: "center" }}>
+                        {icon}
+                      </Box>
+                      <ListItemText
+                        primary={todo.title}
+                        primaryTypographyProps={{
+                          variant: "body2",
+                          style: { textDecoration: todo.status === "completed" ? "line-through" : "none" }
+                        }}
+                      />
+                      <Chip 
+                        label={todo.status.replace("_", " ")} 
+                        size="small" 
+                        color={todo.status === "completed" ? "success" : todo.status === "in_progress" ? "info" : "default"}
+                        variant="outlined"
+                        sx={{ fontSize: "0.6rem", height: 20, ml: 1 }}
+                      />
+                    </ListItem>
+                   );
+                })}
+              </List>
+            )}
+          </Box>
+        </Paper>
+
+        {/* Memories Section - 50% */}
+        <Paper
+          variant="outlined"
+          sx={{
+            flex: 5,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+            borderRadius: 2,
+            borderColor: "info.light",
+          }}
+        >
+          <Box sx={{ p: 2, bgcolor: "grey.50", borderBottom: 1, borderColor: "divider" }}>
+            <Typography variant="subtitle1" fontWeight="bold" color="info.main">
+              🧠 Core Memory
+            </Typography>
+          </Box>
+          <Box sx={{ p: 2, overflowY: "auto", flex: 1 }}>
+            {memories.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                No memories stored yet.
+              </Typography>
+            ) : (
+              <List dense>
+                {memories.map((mem, i) => (
+                  <ListItem key={i} disablePadding sx={{ mb: 1 }}>
+                    <Paper 
+                        elevation={0} 
+                        sx={{ 
+                            p: 1, 
+                            bgcolor: "info.light", 
+                            color: "info.contrastText", 
+                            borderRadius: 1, 
+                            width: "100%",
+                            opacity: 0.9
+                        }}
+                    >
+                        <Typography variant="caption" display="block" fontWeight="bold">
+                            {mem.scope?.toUpperCase() || "GLOBAL"}
+                        </Typography>
+                        <Typography variant="body2">
+                            {mem.content || JSON.stringify(mem)}
+                        </Typography>
+                    </Paper>
+                  </ListItem>
+                ))}
+              </List>
+            )}
+          </Box>
+        </Paper>
+      </Grid>
+
+      {/* Right Panel: Chat Area */}
+      <Grid item xs={12} md={8} sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+        <Paper
+          variant="elevation"
+          elevation={2}
+          sx={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            borderRadius: 2,
+            overflow: "hidden",
+          }}
+        >
+          <Box sx={{ p: 2, bgcolor: "primary.main", color: "white" }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography variant="h6">DeepAgent Chat</Typography>
+              {statusText && (
+                 <Chip label={statusText} size="small" sx={{ bgcolor: "rgba(255,255,255,0.2)", color: "white" }} />
+              )}
+            </Stack>
+          </Box>
+          
+          <Box sx={{ p: 2, flex: 1, overflowY: "auto", bgcolor: "grey.50" }}>
+            {messages.length === 0 && (
+              <Box display="flex" justifyContent="center" alignItems="center" height="100%" flexDirection="column" opacity={0.5}>
+                <SmartToyIcon sx={{ fontSize: 60, mb: 2 }} />
+                <Typography>How can I help you today?</Typography>
+              </Box>
+            )}
+            {messages.map((m, i) => (
+              <ChatBubble key={i} role={m.role} content={m.content} />
+            ))}
+            <div ref={messagesEndRef} />
+          </Box>
+          
+          <Divider />
+          
+          <Box sx={{ p: 2, bgcolor: "background.paper" }}>
+            <Stack direction="row" spacing={1}>
+              <TextField
+                fullWidth
+                placeholder="Type your request..."
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                disabled={loading}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+                multiline
+                maxRows={3}
+                size="small"
+                sx={{ 
+                    "& .MuiOutlinedInput-root": { borderRadius: 3 }
+                }}
+              />
+              <IconButton 
+                color="primary" 
+                onClick={send} 
+                disabled={loading || !input.trim()}
+                sx={{ 
+                    bgcolor: "primary.main", 
+                    color: "white", 
+                    "&:hover": { bgcolor: "primary.dark" },
+                    "&:disabled": { bgcolor: "grey.300" },
+                    width: 40,
+                    height: 40,
+                }}
+              >
+                <SendIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+          </Box>
+        </Paper>
+      </Grid>
+    </Grid>
   );
 }

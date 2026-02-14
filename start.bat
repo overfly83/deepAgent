@@ -6,6 +6,7 @@ set "MODE=prod"
 set "VENV_DIR=%ROOT%.venv"
 set "PY=%VENV_DIR%\Scripts\python.exe"
 set "PYTHONPATH=%ROOT%backend"
+set "MCP_SERVERS_DIR=%ROOT%mcp_servers"
 
 :: --- 1. Check & Kill Port 8000 ---
 echo [INFO] Checking port 8000...
@@ -41,6 +42,7 @@ if "%MODE%"=="debug" (
     set DEEPAGENT_DEBUG=1
     set VITE_DEBUG=true
     set PYTHONPATH=%ROOT%backend
+    set DEEPAGENT_MCP_SERVERS_DIR=%MCP_SERVERS_DIR%
     
     :: Load vars from backend/.env manually if needed, or rely on python-dotenv in app
     :: But for start /b, we need to make sure the environment is right.
@@ -86,6 +88,7 @@ cd /d "%ROOT%backend"
 set DEEPAGENT_ENV=prod
 set DEEPAGENT_DEBUG=0
 set PYTHONPATH=%ROOT%backend
+set DEEPAGENT_MCP_SERVERS_DIR=%MCP_SERVERS_DIR%
 
 :: Load env vars for prod as well
 for /f "usebackq tokens=*" %%a in ("%ROOT%backend\.env") do set "%%a"

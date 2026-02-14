@@ -84,11 +84,32 @@ agent = DeepAgent(todo_store=todo_store, store=memory_store)
 session_store = SessionStore()
 
 
+import json
+from fastapi.responses import StreamingResponse
+
+@app.post("/api/chat/stream")
+async def chat_stream(req: ChatRequest, background_tasks: BackgroundTasks):
+    thread_id = req.thread_id or agent.new_thread_id()
+    session_store.add(req.user_id, thread_id)
+    logger.debug("chat stream request", extra={"thread_id": thread_id, "user_id": req.user_id})
+
+    async def event_generator():
+        # Yield initial metadata
+        yield f"data: {json.dumps({'type': 'meta', 'thread_id': thread_id})}\n\n"
+        
+        # Invoke agent with streaming
+        async for event in agent.invoke_stream(thread_id, req.user_id, req.message, background_tasks):
+            yield f"data: {json.dumps(event)}\n\n"
+            
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
 @app.get("/api/health")
 def health():
     logger.debug("health check")
     return {"status": "ok"}
-
 
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(req: ChatRequest, background_tasks: BackgroundTasks):

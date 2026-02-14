@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import yaml
-from langchain_community.chat_models import ChatZhipuAI
+# from langchain_community.chat_models import ChatZhipuAI # Removed in favor of ChatOpenAI
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
@@ -38,12 +38,19 @@ class ZhipuAdapter(ModelAdapter):
              # Try to get from ZHIPUAI_API_KEY env var directly as fallback
              api_key = os.getenv("ZHIPUAI_API_KEY")
         
-        return ChatZhipuAI(
+        api_key_secret = SecretStr(api_key) if api_key else None
+        
+        # Use ChatOpenAI with Zhipu's OpenAI-compatible endpoint
+        # ZhipuAI v4 API Base URL: https://open.bigmodel.cn/api/paas/v4/
+        base_url = spec.base_url or "https://open.bigmodel.cn/api/paas/v4/"
+        
+        return ChatOpenAI(
             model=spec.model, 
-            api_key=api_key, 
+            api_key=api_key_secret, 
+            base_url=base_url,
             temperature=spec.temperature,
-            # max_retries=spec.max_retries, # Not supported in current version
-            # request_timeout=spec.request_timeout, # Not supported in current version
+            max_retries=spec.max_retries,
+            timeout=spec.request_timeout,
         )
 
 class OpenAIAdapter(ModelAdapter):

@@ -24,6 +24,8 @@ class Settings(BaseModel):
     max_concurrency: int = 5
     workspace_root: str = "../"
     model_config_path: str = "./config/models.yaml"
+    mcp_config_path: str = "./config/mcp_servers.yaml"
+    mcp_servers_dir: str = "../mcp_servers"
     use_compressed_history: bool = False
     cors_allow_origins: list[str] = ["http://localhost:5173"]
 
@@ -47,6 +49,8 @@ def get_settings() -> Settings:
         max_concurrency=int(os.getenv("DEEPAGENT_MAX_CONCURRENCY", "5")),
         workspace_root=os.getenv("DEEPAGENT_WORKSPACE_ROOT", "../"),
         model_config_path=os.getenv("DEEPAGENT_MODEL_CONFIG", "./config/models.yaml"),
+        mcp_config_path=os.getenv("DEEPAGENT_MCP_CONFIG", "./config/mcp_servers.yaml"),
+        mcp_servers_dir=os.getenv("DEEPAGENT_MCP_SERVERS_DIR", "../mcp_servers"),
         use_compressed_history=os.getenv("DEEPAGENT_USE_COMPRESSED_HISTORY", "0") in ("1", "true", "True"),
         cors_allow_origins=[
             origin.strip()

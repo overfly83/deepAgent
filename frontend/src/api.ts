@@ -17,23 +17,58 @@ export type ChatResponse = {
 
 const logger = getLogger("api");
 
-export async function chat(
+export async function chatStream(
   thread_id: string,
   user_id: string,
-  message: string
-): Promise<ChatResponse> {
-  logger.debug("chat request", { thread_id, user_id });
-  const res = await fetch("/api/chat", {
+  message: string,
+  onEvent: (event: any) => void
+): Promise<void> {
+  logger.debug("chat stream request", { thread_id, user_id });
+  
+  const response = await fetch("/api/chat/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ thread_id, user_id, message }),
   });
-  if (!res.ok) {
-    logger.error("chat response error", { status: res.status });
-    throw new Error(await res.text());
+
+  if (!response.ok) {
+    logger.error("chat stream error", { status: response.status });
+    throw new Error(await response.text());
   }
-  logger.debug("chat response ok");
-  return res.json();
+
+  const reader = response.body?.getReader();
+  const decoder = new TextDecoder();
+  
+  if (!reader) return;
+
+  let buffer = "";
+  
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    
+    buffer += decoder.decode(value, { stream: true });
+    
+    // Split by double newline (SSE standard)
+    const lines = buffer.split("\n\n");
+    // Keep the incomplete last part in buffer
+    buffer = lines.pop() || "";
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data: ")) continue;
+      
+      const dataStr = trimmed.slice(6);
+      if (dataStr === "[DONE]") return;
+      
+      try {
+        const event = JSON.parse(dataStr);
+        onEvent(event);
+      } catch (e) {
+        logger.warn("failed to parse sse event", { dataStr, e });
+      }
+    }
+  }
 }
 
 export async function getTodos(thread_id: string): Promise<TodoItem[]> {

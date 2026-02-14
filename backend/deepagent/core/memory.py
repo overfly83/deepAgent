@@ -1,24 +1,25 @@
 from __future__ import annotations
 
 import json
-import sqlite3
+import json
 import uuid
 from typing import Any
 
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.store.memory import InMemoryStore
 
 from deepagent.common.config import get_settings, resolve_path
 
 
-def create_checkpointer(thread_id: str) -> SqliteSaver:
+def create_checkpointer(thread_id: str):
     settings = get_settings()
     base = resolve_path(settings.memory_db_path)
     base.parent.mkdir(parents=True, exist_ok=True)
     db_path = base.parent / f"{thread_id}.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(db_path.as_posix(), check_same_thread=False)
-    return SqliteSaver(con)
+    # Use str() to ensure native path separators (backslashes on Windows)
+    # and avoid URI parsing issues.
+    return AsyncSqliteSaver.from_conn_string(str(db_path))
 
 
 def _store_file_path():

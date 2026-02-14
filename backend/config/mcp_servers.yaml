@@ -1,0 +1,22 @@
+version: 1
+servers:
+  yfinance:
+    type: stdio
+    command: uv
+    args:
+      - "run"
+      - "main.py"
+    working_dir: "${MCP_SERVERS_DIR}/mcp-yfinance-server"
+    description: "Yahoo Finance stock market data - free, no API key required"
+    enabled: true
+    tools:
+      - name: get_stock_price
+        description: Get current stock price for a ticker symbol (e.g., AAPL, TSLA, SAP)
+      - name: get_stock_info
+        description: Get detailed company information including sector, industry, P/E ratio
+      - name: get_historical_stock_prices
+        description: Get historical OHLCV data for a ticker
+      - name: get_technical_summary
+        description: Generate comprehensive technical summary with RSI, MACD, MAs, Bollinger
+      - name: compare_stocks
+        description: Compare two stock prices
