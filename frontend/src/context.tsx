@@ -13,6 +13,8 @@ type DeepAgentState = {
   setTodos: (value: TodoItem[]) => void;
   plan: string[];
   setPlan: (value: string[]) => void;
+  planSummary: string;
+  setPlanSummary: (value: string) => void;
   memories: Array<Record<string, unknown>>;
   setMemories: (value: Array<Record<string, unknown>>) => void;
 };
@@ -52,7 +54,15 @@ export function DeepAgentProvider({ children }: { children: React.ReactNode }) {
   const [threadId, setThreadId] = useState(initialThreadId);
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [plan, setPlan] = useState<string[]>([]);
+  const [planSummary, setPlanSummary] = useState<string>("");
   const [memories, setMemories] = useState<Array<Record<string, unknown>>>([]);
+
+  useEffect(() => {
+    setTodos([]);
+    setPlan([]);
+    setPlanSummary("");
+    setMemories([]);
+  }, [threadId]);
 
   useEffect(() => {
     const loaded = loadSessions(userId);
@@ -98,6 +108,8 @@ export function DeepAgentProvider({ children }: { children: React.ReactNode }) {
         setTodos,
         plan,
         setPlan,
+        planSummary,
+        setPlanSummary,
         memories,
         setMemories,
       }}

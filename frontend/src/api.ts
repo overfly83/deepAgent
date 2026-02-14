@@ -3,7 +3,7 @@ import { getLogger } from "./logger";
 export type TodoItem = {
   id: string;
   title: string;
-  status: "pending" | "in_progress" | "done";
+  status: "pending" | "in_progress" | "done" | "completed" | "failed";
 };
 
 export type ChatResponse = {

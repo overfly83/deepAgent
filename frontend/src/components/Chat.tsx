@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Box,
   Button,
   Chip,
@@ -11,6 +12,7 @@ import {
   ListItem,
   ListItemText,
   Paper,
+  Snackbar,
   Stack,
   TextField,
   Typography,
@@ -22,6 +24,7 @@ import PersonIcon from "@mui/icons-material/Person";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
 import PlayCircleFilledWhiteIcon from "@mui/icons-material/PlayCircleFilledWhite";
+import ErrorIcon from "@mui/icons-material/Error";
 import { chatStream, getSessions } from "../api";
 import { useDeepAgent } from "../context";
 
@@ -81,6 +84,16 @@ export default function Chat() {
   const [loading, setLoading] = useState(false);
   const [statusText, setStatusText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Error state
+  const [errorOpen, setErrorOpen] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [errorSeverity, setErrorSeverity] = useState<"error" | "warning">("error");
+
+  // Debug mode toggle (could be env var or UI toggle)
+  const [debugMode, setDebugMode] = useState(
+    typeof import.meta !== "undefined" && (import.meta as any).env && (import.meta as any).env.DEV
+  );
 
   useEffect(() => {
     getSessions(userId)
@@ -147,6 +160,18 @@ export default function Chat() {
           case "tool_end":
             setStatusText(`Finished tool: ${event.tool}`);
             break;
+            
+          case "error":
+             // Handle structured error
+             setStatusText("");
+             setErrorMsg(event.content);
+             setErrorSeverity(event.severity || "error");
+             setErrorOpen(true);
+             // Also add to chat if critical
+             if (event.severity === "error") {
+                 setMessages((m) => [...m, { role: "agent", content: `❌ Error: ${event.content}` }]);
+             }
+             break;
         }
       });
     } catch (e: any) {
@@ -161,11 +186,11 @@ export default function Chat() {
     <Grid container spacing={2} sx={{ height: "calc(100vh - 100px)" }}>
       {/* Left Panel: Mission Control */}
       <Grid item xs={12} md={4} sx={{ height: "100%", display: "flex", flexDirection: "column", gap: 2 }}>
-        {/* Plan Section - 20% */}
+        {/* Plan Section */}
         <Paper
           variant="outlined"
           sx={{
-            flex: 2,
+            flex: debugMode ? 2 : 4,
             minHeight: 0,
             display: "flex",
             flexDirection: "column",
@@ -198,11 +223,11 @@ export default function Chat() {
           </Box>
         </Paper>
 
-        {/* Todos Section - 30% */}
+        {/* Todos Section */}
         <Paper
           variant="outlined"
           sx={{
-            flex: 3,
+            flex: debugMode ? 3 : 6,
             minHeight: 0,
             display: "flex",
             flexDirection: "column",
@@ -227,6 +252,7 @@ export default function Chat() {
                    let icon = <RadioButtonUncheckedIcon fontSize="small" color="disabled" />;
                    if (todo.status === "in_progress") icon = <PlayCircleFilledWhiteIcon fontSize="small" color="info" />;
                    if (todo.status === "completed" || todo.status === "done") icon = <CheckCircleIcon fontSize="small" color="success" />;
+                   if (todo.status === "failed") icon = <ErrorIcon fontSize="small" color="error" />;
                    
                    return (
                     <ListItem key={todo.id} sx={{ borderBottom: "1px dashed #eee" }}>
@@ -255,7 +281,8 @@ export default function Chat() {
           </Box>
         </Paper>
 
-        {/* Memories Section - 50% */}
+        {/* Memories Section - Only in Debug Mode */}
+        {debugMode && (
         <Paper
           variant="outlined"
           sx={{
@@ -294,7 +321,7 @@ export default function Chat() {
                         }}
                     >
                         <Typography variant="caption" display="block" fontWeight="bold">
-                            {mem.scope?.toUpperCase() || "GLOBAL"}
+                            {(mem.scope as string)?.toUpperCase() || "GLOBAL"}
                         </Typography>
                         <Typography variant="body2">
                             {mem.content || JSON.stringify(mem)}
@@ -306,10 +333,23 @@ export default function Chat() {
             )}
           </Box>
         </Paper>
+        )}
       </Grid>
 
       {/* Right Panel: Chat Area */}
       <Grid item xs={12} md={8} sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+        {/* Error Snackbar */}
+        <Snackbar 
+            open={errorOpen} 
+            autoHideDuration={6000} 
+            onClose={() => setErrorOpen(false)}
+            anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        >
+            <Alert onClose={() => setErrorOpen(false)} severity={errorSeverity as any} sx={{ width: '100%' }}>
+                {errorMsg}
+            </Alert>
+        </Snackbar>
+        
         <Paper
           variant="elevation"
           elevation={2}

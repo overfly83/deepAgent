@@ -14,7 +14,7 @@ class ChatRequest(BaseModel):
 class TodoItem(BaseModel):
     id: str
     title: str
-    status: Literal["pending", "in_progress", "completed"] = "pending"
+    status: Literal["pending", "in_progress", "completed", "failed"] = "pending"
 
 
 class TodoWriteRequest(BaseModel):
