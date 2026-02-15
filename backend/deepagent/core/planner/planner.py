@@ -9,7 +9,9 @@ from deepagent.common.schemas import TodoItem
 from deepagent.core.planner.prompts import PLANNER_SYSTEM_PROMPT
 from deepagent.core.models import ModelRouter
 from deepagent.core.toolbox import ToolBox
+from deepagent.common.logger import get_logger
 
+logger = get_logger(__name__)
 
 def clean_json_response(response: str) -> str:
     """
@@ -92,8 +94,6 @@ class Planner:
             )
         except json.JSONDecodeError as e:
             # If parsing fails, log the error and return an empty plan
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(f"Failed to parse plan JSON: {e}")
             logger.error(f"Raw response: {result.content}")
             logger.error(f"Cleaned response: {cleaned_response}")
@@ -107,14 +107,24 @@ class Planner:
         """Get a description of available MCP tools."""
         mcp_tools_desc = ""
         try:
+            # Debug: Print available servers
+            logger.debug(f"Available MCP servers: {list(self.toolbox.mcp_registry.servers.keys())}")
+            
             self.toolbox._ensure_mcp_initialized()
             all_mcp_tools = []
             for server_name in self.toolbox.mcp_registry.servers:
                 tools = self.toolbox.mcp_registry.list_tools(server_name)
+                logger.debug(f"Tools for {server_name}: {[t['name'] for t in tools]}")
                 for t in tools:
                      all_mcp_tools.append(f"- {t['name']} (Server: {server_name}): {t['description']}")
             if all_mcp_tools:
                 mcp_tools_desc = "\nAvailable Tools for Execution:\n" + "\n".join(all_mcp_tools)
-        except Exception:
-            pass
+                logger.debug(f"Generated tools description: {mcp_tools_desc}")
+            else:
+                logger.debug("No MCP tools found")
+                mcp_tools_desc = "\nNo tools are available for execution. Do not create plan steps that require tools."
+        except Exception as e:
+            logger.error(f"Failed to get MCP tools description: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
         return mcp_tools_desc

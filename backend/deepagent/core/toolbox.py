@@ -94,8 +94,8 @@ class ToolBox:
             """Call a tool on a configured MCP server.
             
             Args:
-                server_name: Name of the MCP server (e.g., 'yfinance')
-                tool_name: Name of the tool to call (e.g., 'get_stock_price')
+                server_name: Name of the MCP server (e.g., 'stock-mcp')
+                tool_name: Name of the tool to call (e.g., 'get_quote')
                 arguments: Arguments to pass to the tool
             
             Returns:
@@ -122,7 +122,7 @@ class ToolBox:
             """List available tools on a configured MCP server.
             
             Args:
-                server_name: Name of the MCP server (e.g., 'yfinance')
+                server_name: Name of the MCP server (e.g., 'stock-mcp')
             
             Returns:
                 List of available tools with their names and descriptions

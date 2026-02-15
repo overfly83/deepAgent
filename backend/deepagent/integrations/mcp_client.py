@@ -51,7 +51,11 @@ class MCPConfig:
         servers = []
         servers_dir = mcp_servers_dir or os.getenv("DEEPAGENT_MCP_SERVERS_DIR", "")
         
-        for name, server_data in data.get("servers", {}).items():
+        servers_data = data.get("servers", {})
+        if servers_data is None:
+            servers_data = {}
+        
+        for name, server_data in servers_data.items():
             tools = [
                 MCPServerTool(
                     name=t.get("name", ""),
