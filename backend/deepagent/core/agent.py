@@ -4,7 +4,6 @@ import asyncio
 import json
 import os
 import random
-import re
 import time
 import uuid
 from datetime import datetime
@@ -14,14 +13,13 @@ from typing import Any, cast
 import httpx
 from deepagents import create_deep_agent
 from deepagents.backends import FilesystemBackend
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
-from pydantic import BaseModel as LCBaseModel
-from pydantic import field_validator
 
 from deepagent.common.config import get_settings, resolve_path
 from deepagent.common.logger import get_logger
 from deepagent.common.schemas import TodoItem
+from deepagent.core.prompts import AGENT_SYSTEM_PROMPT
 from deepagent.core.memory import (
     create_checkpointer,
     create_store,
@@ -32,6 +30,9 @@ from deepagent.core.memory import (
 from deepagent.core.models import ModelRouter
 from deepagent.core.todos import TodoStore
 from deepagent.core.toolbox import ToolBox
+from deepagent.core.planner import Planner
+from deepagent.core.execution import ExecutionEngine
+from deepagent.core.observer import PlanObserver
 from deepagent.integrations.mcp_client import MCPRegistry
 from deepagent.integrations.skills import SkillRegistry
 
@@ -42,30 +43,6 @@ from deepagent.common.exceptions import (
 )
 
 logger = get_logger("deepagent.core.agent")
-
-class PlanOutput(LCBaseModel):
-    plan: list[str] = []
-    todos: list[TodoItem] = []
-    summary: str = ""
-
-    @field_validator("plan", mode="before")
-    def parse_plan(cls, v):
-        if isinstance(v, str):
-            return [v]
-        return v
-        
-    @field_validator("todos", mode="before")
-    def parse_todos(cls, v):
-        if not isinstance(v, list):
-            return []
-        for item in v:
-            if isinstance(item, dict):
-                if "id" not in item:
-                    item["id"] = str(uuid.uuid4())
-                if "status" not in item:
-                    item["status"] = "pending"
-        return v
-
 
 class DeepAgent:
     def __init__(
@@ -98,8 +75,6 @@ class DeepAgent:
             self.settings.model_config_path, self.settings
         )
         self.chat_model = self.model_router.get_model("chat")
-        self.planner_model = self.model_router.get_model("plan")
-        self.planner = self.planner_model.with_structured_output(PlanOutput)
 
         self.toolbox = ToolBox(
             todo_store=self.todo_store,
@@ -108,6 +83,10 @@ class DeepAgent:
             skill_registry=self.skill_registry,
             subagent_fn=self._run_subagent,
         )
+        
+        self.planner = Planner(self.model_router, self.toolbox)
+        self.execution_engine = ExecutionEngine(self.todo_store, self.toolbox)
+        self.observer = PlanObserver(self.model_router)
 
     def _call_with_retry(self, fn):
         delay = 1.0
@@ -226,28 +205,7 @@ class DeepAgent:
         except Exception as e:
             logger.warn(f"Failed to list MCP tools for system prompt: {e}")
 
-        return f"""
-            You are DeepAgent, a structured, context-aware assistant designed to handle tasks efficiently through systematic planning, context management, specialized subagent collaboration, and persistent long-term memory. Adhere strictly to the following guidelines, integrating all core capabilities into your workflow:
-            
-            {mcp_tools_desc}
-
-            1. Core Identity & Fundamental Requirements: Always act as DeepAgent. For every task—whether simple or complex—first decompose it into a clear, concise short plan (1-5 discrete, actionable steps), and consistently maintain and update your task list using the built-in write_todos tool. Prioritize recalling user history across all sessions, extract durable, relevant facts from interactions, and store them permanently using the memory_put tool to ensure continuity and avoid redundant work.
-            
-            2. Planning and Task Decomposition (via write_todos): Leverage the built-in write_todos tool as the foundation of your workflow. Break down complex tasks into small, manageable, discrete steps that can be executed sequentially or in parallel (as needed). Track progress on each todo item in real time—mark steps as completed once finished, update steps if new information emerges or requirements change, and remove irrelevant steps to keep the task list focused. Ensure each todo is specific (e.g., "Read the config file to extract API keys" instead of "Handle config") and aligned with the overall task goal.
-            
-            3. Context Management (via File System Tools): Utilize the provided file system tools (ls, read_file, write_file, edit_file) proactively to manage context efficiently. Offload large chunks of context (e.g., long documents, detailed logs, complex data structures) to in-memory or filesystem storage instead of keeping them in the prompt window—this prevents context overflow and ensures you can work seamlessly with variable-length tool results. When working with files: use ls to explore the file structure first, read_file to access content only when needed, write_file to save intermediate results or persistent data, and edit_file to modify existing content incrementally. Always reference stored file paths in your todos and plans for easy retrieval.
-            
-            4. Subagent Spawning (via Task Tool): Use the built-in task tool to spawn specialized subagents when appropriate, focusing on context isolation. Deploy subagents for narrow, deep subtasks (e.g., "Validate type annotations with mypy", "Summarize the user’s previous session history") that would clutter the main agent’s context or require specialized expertise. Keep the main agent’s context clean by delegating these subtasks to subagents, and ensure subagents return clear, actionable results that the main agent can integrate into its overall plan. Track subagent progress via write_todos and retrieve their outputs promptly to maintain workflow continuity.
-            
-            5. Long-Term Memory (via LangGraph's Memory Store): Extend your capabilities with persistent memory across all threads using LangGraph's Memory Store. Use memory_put to save durable facts (e.g., user preferences, key project details, previously confirmed conclusions, API credentials) from each conversation—avoid storing temporary or irrelevant information (e.g., intermediate todo updates, failed tool outputs). Before starting a new task or responding to a user query, recall relevant user history and stored facts to ensure consistency across sessions. If a fact is unclear or missing, use your tools to verify or request clarification, then update the memory store accordingly.
-            
-            6. External Tools (MCP/Skills): You have access to external tools via the 'mcp_call' and 'skill_call' functions. 
-               - To use an MCP tool, call 'mcp_call' with the server_name, tool_name, and arguments. 
-               - CHECK the 'Available MCP Tools' list above to see what is available.
-               - If the user asks for financial data, stock prices, or other domain-specific info, CHECK if an MCP tool exists for it (e.g. 'get_stock_price' on 'finance' server).
-
-            Overarching Rule: Prioritize clarity, consistency, and adaptability. Your plan and todos should evolve as new information emerges, your context should remain lean and organized via file tools, subagents should handle specialized work to keep you focused, and long-term memory should eliminate redundancy and ensure continuity across all user interactions.
-        """
+        return AGENT_SYSTEM_PROMPT.format(tools_description=mcp_tools_desc)
 
     def _run_subagent(self, task: str) -> str:
         if self.depth >= 1:
@@ -267,65 +225,67 @@ class DeepAgent:
         last = result["messages"][-1].content if result.get("messages") else ""
         return str(last)
 
-    def plan(self, message: str) -> PlanOutput:
-        # Include available tools in planning context to help planner know what's possible
-        mcp_tools_desc = ""
-        try:
-            self.toolbox._ensure_mcp_initialized()
-            all_mcp_tools = []
-            for server_name in self.mcp_registry.servers:
-                tools = self.mcp_registry.list_tools(server_name)
-                for t in tools:
-                     all_mcp_tools.append(f"- {t['name']} (Server: {server_name}): {t['description']}")
-            if all_mcp_tools:
-                mcp_tools_desc = "\nAvailable Tools for Execution:\n" + "\n".join(all_mcp_tools)
-        except Exception:
-            pass
-
-        system = SystemMessage(
-            content=(
-                "You are a planning assistant. Analyze the user's request and produce a structured plan.\n"
-                f"{mcp_tools_desc}\n"
-                "Return a JSON object with:\n"
-                "- 'plan': A list of high-level steps (strings). If only one step, return a list with one string.\n"
-                "- 'todos': A list of actionable items, each with a 'title' and a unique 'id' (string).\n"
-                "- 'summary': A brief summary of the intent.\n"
-                "If the user asks for information that can be retrieved via available tools (e.g. stock prices), create a plan step to use that tool."
-                "Do NOT include any markdown code blocks.Do NOT wrap the JSON in json, , or any backticks.Do NOT add explanations, notes, extra text, or comments."
-            )
-        )
+    def plan(self, message: str):
+        """Generate a plan based on the user's message."""
         try:
             logger.debug(f"Generating plan for message: {message}")
-            result = self._call_with_retry(
-                lambda: self.planner.invoke([system, HumanMessage(content=message)])
-            )
+            result = self.planner.generate_plan(message)
             logger.debug(f"Plan generation result: {result}")
             
-            if result is None:
-                logger.warn("Plan generation returned None")
-                return PlanOutput(plan=[], todos=[], summary="")
-            if isinstance(result, dict):
-                result = PlanOutput(**cast(dict[str, Any], result))
-            
-            if isinstance(result, PlanOutput):
-                # Fallback: if todos are empty but plan exists, generate todos from plan
-                if result.plan and not result.todos:
-                    logger.info("Todos missing from LLM output, generating from plan")
-                    result.todos = [
-                        TodoItem(id=str(uuid.uuid4()), title=step, status="pending") 
-                        for step in result.plan
-                    ]
-                return result
-
-            logger.warn(f"Plan generation returned unexpected type: {type(result)}")
-            return PlanOutput(plan=[], todos=[], summary="")
+            # Fallback: if todos are empty but plan exists, generate todos from plan
+            if result.plan and not result.todos:
+                logger.info("Todos missing from LLM output, generating from plan")
+                result.todos = [
+                    TodoItem(id=str(uuid.uuid4()), title=step, status="pending") 
+                    for step in result.plan
+                ]
+            return result
         except Exception as e:
             # Wrap generic exception
             error_event = AgentErrorHandler.format_error(PlanGenerationError("Failed to generate plan", original_error=e))
             # We can't yield here easily as this is a sync method returning PlanOutput
             # But we can log it properly
             logger.error(f"Plan generation failed: {e}", exc_info=True)
-            return PlanOutput(plan=[], todos=[], summary="")
+            return type('PlanOutput', (), {'plan': [], 'todos': [], 'summary': ''})()
+
+    def invoke(self, thread_id: str, user_id: str, message: str, background_tasks: Any = None):
+        """Non-streaming version of invoke_stream that returns the full result."""
+        import asyncio
+        
+        async def collect_events():
+            events = []
+            async for event in self.invoke_stream(thread_id, user_id, message, background_tasks):
+                events.append(event)
+            return events
+        
+        events = asyncio.run(collect_events())
+        
+        # Process events to extract the final result
+        reply = ""
+        plan = []
+        summary = ""
+        todos = []
+        
+        for event in events:
+            if event.get("type") == "token":
+                reply += event.get("content", "")
+            elif event.get("type") == "plan":
+                plan = event.get("plan", [])
+                summary = event.get("summary", "")
+            elif event.get("type") == "todos":
+                todos = event.get("todos", [])
+        
+        # Get relevant memories
+        relevant = store_search(self.store, user_id, query=message, limit=8)
+        memories = [str(m.value) for m in relevant]
+        
+        return {
+            "reply": reply,
+            "plan": plan,
+            "summary": summary,
+            "todos": todos,
+            "memories": memories
+        }
 
     async def invoke_stream(
         self, thread_id: str, user_id: str, message: str, background_tasks: Any = None
@@ -335,9 +295,22 @@ class DeepAgent:
             yield {"type": "status", "content": "Analyzing request..."}
             try:
                 plan = self.plan(message)
-                logger.info(f"Generated Plan:\n{plan.model_dump_json(indent=2)}")
+                logger.info(f"Generated Plan:\n{plan.plan}\nTodos:\n{[t.title for t in plan.todos]}")
             except Exception as e:
                  raise PlanGenerationError("Plan generation step failed", original_error=e)
+            
+            # 2. Analyze Plan with Observer
+            if plan:
+                yield {"type": "status", "content": "Analyzing plan..."}
+                observer_feedback = self.observer.update(
+                    type="plan",
+                    plan=plan.plan,
+                    todos=plan.todos
+                )
+                
+                if observer_feedback:
+                    yield {"type": "observer_feedback", "feedback": observer_feedback["feedback"]}
+                    logger.info(f"Observer feedback on plan: {observer_feedback['feedback'][:100]}...")
             
             # NOTE: We need to pass the plan/todos to the agent executor so it knows what to do!
             # The agent uses the system prompt and conversation history.
@@ -353,6 +326,10 @@ class DeepAgent:
                     # Format plan for the agent
                     plan_text = "\n".join([f"- {t.title} (ID: {t.id})" for t in plan.todos])
                     plan_context = f"\n\nCURRENT PLAN:\n{plan_text}\n\nExecute the plan step-by-step using available tools. Update the todo status as you proceed. IF A TOOL IS AVAILABLE TO SOLVE THE TASK, YOU MUST USE IT. IMPORTANT: After each step, you MUST use the 'write_todos' tool to mark the corresponding task as 'completed'."
+                    
+                    # Add observer feedback to plan context if available
+                    if observer_feedback:
+                        plan_context += f"\n\nOBSERVER FEEDBACK:\n{observer_feedback['feedback']}"
             
             # 2. Prepare Context
             config: RunnableConfig = {
@@ -402,121 +379,46 @@ class DeepAgent:
                 )
 
                 accumulated_reply = ""
+                current_task = None
                 try:
-                    async for event in agent_executor.astream_events(
-                        {"messages": messages}, 
-                        config=config, 
-                        version="v1"
+                    async for event in self.execution_engine.execute_plan(
+                        thread_id, agent_executor, messages, config
                     ):
-                        kind = event["event"]
+                        if event.get("type") == "token":
+                            accumulated_reply += event.get("content", "")
                         
-                        if kind == "on_chat_model_stream":
-                            content = event["data"]["chunk"].content
-                            if content:
-                                yield {"type": "token", "content": content}
-                                accumulated_reply += content
+                        # Track current task
+                        if event.get("type") == "tool_start" and event.get("tool") != "write_todos":
+                            # Get the current task being executed
+                            current_todos = self.todo_store.get(thread_id)
+                            current_task = next((t for t in current_todos if t.status == "in_progress"), None)
                         
-                        elif kind == "on_tool_start":
-                            tool_name = event["name"]
-                            tool_input = event["data"].get("input")
-                            
-                            # Log detailed tool start
-                            logger.info(f"Agent starting tool: {tool_name} with input: {str(tool_input)[:500]}")
-                            
-                            yield {"type": "tool_start", "tool": tool_name, "input": tool_input}
-                            yield {"type": "status", "content": f"Running {tool_name}..."}
-                            
-                            # Update todo status to 'in_progress' if we can match the tool to a step
-                            # For simplicity, if we have a pending todo that matches the tool intent (or just the first pending one)
-                            # we mark it in_progress.
-                            
-                            # Auto-update logic: Find the first 'pending' todo and mark it 'in_progress'
-                            if tool_name != "write_todos":
+                        # Handle task completion and analyze result with observer
+                        elif event.get("type") == "tool_end" and event.get("tool") != "write_todos":
+                            if current_task:
+                                tool_output = event.get("output", "")
+                                
+                                # Get remaining tasks
                                 current_todos = self.todo_store.get(thread_id)
-                                # First, verify if the PREVIOUS in_progress task failed?
-                                # No, we handle failure in on_tool_end.
+                                remaining_tasks = [t for t in current_todos if t.status != "completed"]
                                 
-                                first_pending = next((t for t in current_todos if t.status == "pending"), None)
-                                if first_pending:
-                                    first_pending.status = "in_progress"
-                                    self.todo_store.write(thread_id, current_todos)
-                                    yield {"type": "todos", "todos": [t.model_dump() for t in current_todos]}
-                            
-                            if tool_name == "write_todos":
-                                pass 
+                                # Analyze task result with observer
+                                observer_feedback = self.observer.update(
+                                    type="task_result",
+                                    task=current_task,
+                                    result=tool_output,
+                                    remaining_tasks=remaining_tasks
+                                )
                                 
-                        elif kind == "on_tool_end":
-                            tool_output = event["data"].get("output")
-                            tool_name = event["name"]
-                            
-                            # Log detailed tool end
-                            logger.info(f"Agent finished tool: {tool_name}\nOutput:\n{str(tool_output)[:1000]}...") # Increased truncate limit
-                            
-                            yield {"type": "tool_end", "tool": tool_name, "output": str(tool_output)}
-                            yield {"type": "status", "content": f"Finished {tool_name}"}
-                            
-                            # Check for failure in tool output
-                            is_failed = False
-                            output_str = str(tool_output)
-                            
-                            # More robust error checking:
-                            # 1. Parse JSON if possible to check specific fields
-                            # 2. Avoid matching "Error" if it's part of a key like "isError": false
-                            
-                            try:
-                                # Try to find a JSON object in the output string if it's not already a dict
-                                if isinstance(tool_output, dict):
-                                    output_data = tool_output
-                                else:
-                                    # This is a simplification; robust parsing might need regex or json.loads
-                                    # But let's stick to string heuristics that avoid false positives
-                                    output_data = None
-
-                                if '"success": false' in output_str:
-                                    is_failed = True
-                                elif "Rate limited" in output_str:
-                                    is_failed = True
-                                # Check for "isError": true (with flexible spacing)
-                                elif re.search(r'"isError"\s*:\s*true', output_str):
-                                    is_failed = True
-                                # Only flag "Error" if it's not part of "isError": false
-                                elif "Error" in output_str and '"isError": false' not in output_str and '"isError":false' not in output_str:
-                                    # Still risky, but better. Let's look for "Traceback" or "Exception"
-                                    if "Traceback" in output_str or "Exception" in output_str:
-                                        is_failed = True
-                            except Exception:
-                                # Fallback to simple check if parsing fails
-                                if '"success": false' in output_str or "Rate limited" in output_str:
-                                    is_failed = True
-                            
-                            # If tool was write_todos, refresh the client's todo list
-                            if tool_name == "write_todos":
-                                 current_todos = self.todo_store.get(thread_id)
-                                 yield {"type": "todos", "todos": [t.model_dump() for t in current_todos]}
-                            else:
-                                 # Auto-update logic: 
-                                 # If failed, mark the currently 'in_progress' task as 'failed'.
-                                 # If success, we ideally wait for the agent to mark it completed, OR we mark it completed here.
-                                 # Given the user's feedback "remaining tasks are always pending", we should probably
-                                 # auto-complete successful tasks here if the agent doesn't do it.
-                                 
-                                 current_todos = self.todo_store.get(thread_id)
-                                 # Find the task that is currently in_progress (likely the one we just started)
-                                 in_progress_task = next((t for t in current_todos if t.status == "in_progress"), None)
-                                 
-                                 if in_progress_task:
-                                     if is_failed:
-                                         in_progress_task.status = "failed"
-                                         logger.warn(f"Tool {tool_name} failed, marking task {in_progress_task.title} as failed.")
-                                     else:
-                                         # If success, auto-complete it! 
-                                         # The user complained that tasks stay pending. 
-                                         # Moving it to completed allows the NEXT tool start to pick up the NEXT pending task.
-                                         in_progress_task.status = "completed"
-                                         logger.info(f"Tool {tool_name} succeeded, auto-completing task {in_progress_task.title}.")
-                                     
-                                     self.todo_store.write(thread_id, current_todos)
-                                     yield {"type": "todos", "todos": [t.model_dump() for t in current_todos]}
+                                if observer_feedback:
+                                    yield {"type": "observer_feedback", "feedback": observer_feedback["feedback"]}
+                                    logger.info(f"Observer feedback on task '{current_task.title}': {observer_feedback['feedback'][:100]}...")
+                                    
+                                    # Update plan context with observer feedback for next steps
+                                    if plan_context:
+                                        plan_context += f"\n\nOBSERVER FEEDBACK ON '{current_task.title}':\n{observer_feedback['feedback']}"
+                        
+                        yield event
                 except Exception as e:
                     # Capture stream errors
                     raise AgentStreamError("Error during agent execution stream", original_error=e)
@@ -524,24 +426,6 @@ class DeepAgent:
                 # Log the final reply
                 if accumulated_reply:
                     logger.info(f"Final Agent Reply:\n{accumulated_reply}")
-                
-                # 4. Finalize & Auto-complete in_progress tasks
-                # If the loop finishes naturally (no error), it means the agent is done.
-                # We should check if there's any task left 'in_progress' and mark it completed.
-                try:
-                    final_todos = self.todo_store.get(thread_id)
-                    updated = False
-                    for t in final_todos:
-                        if t.status == "in_progress":
-                            t.status = "completed"
-                            updated = True
-                    
-                    if updated:
-                        self.todo_store.write(thread_id, final_todos)
-                        yield {"type": "todos", "todos": [t.model_dump() for t in final_todos]}
-                        logger.info("Auto-completed remaining in_progress tasks.")
-                except Exception as e:
-                    logger.warn(f"Failed to auto-complete todos: {e}")
 
         except Exception as e:
             # Global error handler for the stream
@@ -582,4 +466,3 @@ class DeepAgent:
         
         # Trigger background summary if needed
         # if background_tasks: ...
-

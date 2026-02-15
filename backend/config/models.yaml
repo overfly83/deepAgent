@@ -1,14 +1,25 @@
-defaults:
-  provider: zhipu
-  model: GLM-4-Flash
-  temperature: 0.3
-  max_retries: 3
-  request_timeout: 60.0
-
-models:
-  chat:
-    model: GLM-4-Flash
-  plan:
-    model: GLM-4-Flash
-  summary:
-    model: GLM-4-Flash
+providers:
+  nvidia:
+    model: z-ai/glm5
+    temperature: 0.1
+    max_retries: 3
+    request_timeout: 60.0
+    models:
+      chat:
+        model: z-ai/glm5
+      plan:
+        model: z-ai/glm5
+      summary:
+        model: z-ai/glm4.7
+  zhipu:
+    model: GLM-4-flash
+    temperature: 0.1
+    max_retries: 3
+    request_timeout: 60.0
+    models:
+      chat:
+        model: GLM-4-flash
+      plan:
+        model: GLM-4-flash
+      summary:
+        model: GLM-4-flash

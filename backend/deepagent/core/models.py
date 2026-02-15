@@ -41,8 +41,7 @@ class ZhipuAdapter(ModelAdapter):
         api_key_secret = SecretStr(api_key) if api_key else None
         
         # Use ChatOpenAI with Zhipu's OpenAI-compatible endpoint
-        # ZhipuAI v4 API Base URL: https://open.bigmodel.cn/api/paas/v4/
-        base_url = spec.base_url or "https://open.bigmodel.cn/api/paas/v4/"
+        base_url = spec.base_url or settings.zhipu_base_url
         
         return ChatOpenAI(
             model=spec.model, 
@@ -57,10 +56,17 @@ class OpenAIAdapter(ModelAdapter):
     def create(self, spec: ModelSpec, settings: Settings):
         api_key = os.getenv(spec.api_key_env or "OPENAI_API_KEY")
         api_key_secret = SecretStr(api_key) if api_key else None
+        
+        # Use provider-specific base URL if not specified in spec
+        base_url = spec.base_url
+        if not base_url:
+            if spec.provider == "nvidia":
+                base_url = settings.nvidia_base_url
+        
         return ChatOpenAI(
             model=spec.model,
             api_key=api_key_secret,
-            base_url=spec.base_url,
+            base_url=base_url,
             temperature=spec.temperature,
             max_retries=spec.max_retries,
             timeout=spec.request_timeout, # ChatOpenAI uses 'timeout'
@@ -76,6 +82,7 @@ class ModelRouter:
             "zhipu": ZhipuAdapter(),
             "openai": OpenAIAdapter(),
             "doubao": OpenAIAdapter(),
+            "nvidia": OpenAIAdapter(),
         }
         self._cache: dict[str, Any] = {}
 
@@ -83,22 +90,33 @@ class ModelRouter:
     def from_config(cls, path: str, settings: Settings) -> "ModelRouter":
         full_path = resolve_path(path)
         data = yaml.safe_load(full_path.read_text(encoding="utf-8")) or {}
-        defaults = data.get("defaults", {}) if isinstance(data, dict) else {}
+        
+        # Get the provider from settings (environment variable)
+        provider = settings.model_provider
+        
+        # Get provider-specific configuration
+        providers_config = data.get("providers", {}) if isinstance(data, dict) else {}
+        provider_config = providers_config.get(provider, {}) if isinstance(providers_config, dict) else {}
+        
+        # Create default spec from provider config
         default_spec = ModelSpec(
-            provider=str(defaults.get("provider", "zhipu")),
-            model=str(defaults.get("model", "glm-4-flash")),
-            temperature=float(defaults.get("temperature", 0.3)),
-            api_key_env=defaults.get("api_key_env"),
-            base_url=defaults.get("base_url"),
-            max_retries=int(defaults.get("max_retries", 3)),
-            request_timeout=float(defaults.get("request_timeout", 60.0)),
+            provider=provider,
+            model=str(provider_config.get("model", "glm-4-flash")),
+            temperature=float(provider_config.get("temperature", 0.3)),
+            api_key_env=provider_config.get("api_key_env"),
+            base_url=provider_config.get("base_url"),
+            max_retries=int(provider_config.get("max_retries", 3)),
+            request_timeout=float(provider_config.get("request_timeout", 60.0)),
         )
+        
         specs: dict[str, ModelSpec] = {}
-        for name, raw in (data.get("models", {}) or {}).items():
+        # Get provider-specific models config
+        provider_models = provider_config.get("models", {}) if isinstance(provider_config, dict) else {}
+        for name, raw in provider_models.items():
             if not isinstance(raw, dict):
                 continue
             specs[name] = ModelSpec(
-                provider=str(raw.get("provider", default_spec.provider)),
+                provider=provider,
                 model=str(raw.get("model", default_spec.model)),
                 temperature=float(raw.get("temperature", default_spec.temperature)),
                 api_key_env=raw.get("api_key_env", default_spec.api_key_env),
@@ -106,6 +124,7 @@ class ModelRouter:
                 max_retries=int(raw.get("max_retries", default_spec.max_retries)),
                 request_timeout=float(raw.get("request_timeout", default_spec.request_timeout)),
             )
+        
         return cls(specs=specs, defaults=default_spec, settings=settings)
 
     def get_model(self, step: str):

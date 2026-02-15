@@ -136,8 +136,15 @@ def get_logger(name: str) -> Logger:
     if not logger.handlers:
         # 1. Console Handler
         console_handler = logging.StreamHandler(sys.stdout)
-        # Debug mode: All logs. Prod mode: ERROR only.
-        console_level = logging.DEBUG if settings.debug else logging.ERROR
+        # Use DEEPAGENT_LOG_LEVEL to determine log level
+        log_level_map = {
+            'debug': logging.DEBUG,
+            'info': logging.INFO,
+            'warning': logging.WARNING,
+            'error': logging.ERROR,
+            'critical': logging.CRITICAL
+        }
+        console_level = log_level_map.get(settings.log_level.lower(), logging.ERROR)
         console_handler.setLevel(console_level)
         console_handler.setFormatter(ColorFormatter())
         console_handler.addFilter(SensitiveDataFilter())

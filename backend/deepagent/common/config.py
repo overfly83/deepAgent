@@ -28,6 +28,11 @@ class Settings(BaseModel):
     mcp_servers_dir: str = "../mcp_servers"
     use_compressed_history: bool = False
     cors_allow_origins: list[str] = ["http://localhost:5173"]
+    # Model provider base URLs
+    zhipu_base_url: str = "https://open.bigmodel.cn/api/paas/v4/"
+    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
+    # Model provider selection
+    model_provider: str = "zhipu"
 
 
 @lru_cache
@@ -59,6 +64,9 @@ def get_settings() -> Settings:
             ).split(",")
             if origin.strip()
         ],
+        zhipu_base_url=os.getenv("DEEPAGENT_ZHIPU_BASE_URL", "https://open.bigmodel.cn/api/paas/v4/"),
+        nvidia_base_url=os.getenv("DEEPAGENT_NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1"),
+        model_provider=os.getenv("DEEPAGENT_MODEL_PROVIDER", "zhipu"),
     )
 
 
